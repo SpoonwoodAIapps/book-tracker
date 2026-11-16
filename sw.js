@@ -1,6 +1,6 @@
 /* Offline support: the app opens without a connection; new versions arrive the next time it opens online.
    Only touches its own caches (book-tracker-*), so other apps on this site are left alone. */
-const CACHE = "book-tracker-24a9d90fba";
+const CACHE = "book-tracker-8a8cd40f6d";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./apple-touch-icon.png", "./icon-192.png", "./icon-512.png", "./favicon.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

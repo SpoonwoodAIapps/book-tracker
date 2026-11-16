@@ -316,6 +316,9 @@ input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
 .unit-in { display: flex; align-items: center; gap: 8px; }
 .unit-in > span { color: var(--muted); font-weight: 600; flex: none; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.pre-tick { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; justify-self: start; font-size: 14.5px; font-weight: 500; color: var(--ink-2); }
+.pre-tick input { width: 20px; height: 20px; margin: 0; accent-color: var(--plum); flex: none; }
+@media (prefers-color-scheme: dark) { .pre-tick input { accent-color: #8E5DBA; } }
 .check-wrap { display: grid; gap: 0; }
 .check-wrap .field-h { margin: -4px 0 0 34px; }
 .check { display: flex; align-items: center; gap: 12px; min-height: 44px; font-weight: 500; }
@@ -503,15 +506,47 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
     for (const a of state.areas) for (const b of booksIn(state, a.id)) if (!isRead(b)) out.push(b);
     return out;
   }
-  const pagesOf = (s) => (Number.isFinite(s.start) && Number.isFinite(s.end) && s.end >= s.start ? s.end - s.start : 0);
+  // ---------- Pages, including a preface numbered on its own (ix, xvi… or 1, 2, 3 before chapter 1) ----------
+  const ROMAN = [[1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"], [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"]];
+  function toRoman(n) { let out = ""; for (const [v, r] of ROMAN) while (n >= v) { out += r; n -= v; } return out; }
+  function fromRoman(str) {
+    const t = String(str || "").trim().toLowerCase();
+    if (!/^[ivxlcdm]+$/.test(t)) return null;
+    const val = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+    let n = 0;
+    for (let i = 0; i < t.length; i++) { const a = val[t[i]], b = val[t[i + 1]] || 0; n += a < b ? -a : a; }
+    return n > 0 && n < 4000 && toRoman(n) === t ? n : null;
+  }
+  // A page typed in a box: null if empty, false if it isn't a page, else { n, style } (style is "roman" or "num" for a preface page)
+  function readPage(str, pre) {
+    const t = String(str === null || str === undefined ? "" : str).trim();
+    if (!t) return null;
+    if (/^\d+$/.test(t)) return { n: Number(t), style: pre ? "num" : null };
+    if (pre) { const r = fromRoman(t); if (r) return { n: r, style: "roman" }; }
+    return false;
+  }
+  const pageLabel = (n, style) => (style === "roman" ? toRoman(n) : String(n));
+  // Pages read in one sitting. From the preface into chapter 1 counts the rest of the preface plus the chapter pages.
+  function pagesOf(s) {
+    if (!Number.isFinite(s.start) || !Number.isFinite(s.end)) return 0;
+    if (s.startPre && !s.endPre) return Math.max(0, (Number.isFinite(s.preEnd) ? s.preEnd : s.start) - s.start) + s.end;
+    if (!s.startPre && s.endPre) return 0;
+    return s.end >= s.start ? s.end - s.start : 0;
+  }
+  function pagesText(s) {
+    const a = pageLabel(s.start, s.startPre), b = pageLabel(s.end, s.endPre);
+    return s.startPre && s.endPre ? `Preface p. ${a}–${b}` : s.startPre ? `Preface p. ${a} to p. ${b}` : `p. ${a}–${b}`;
+  }
   const byTime = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.at || "").localeCompare(String(b.at || "")));
   function sessionsOf(state, bookId) { return state.sessions.filter((s) => s.bookId === bookId).sort(byTime); }
-  // Where you're up to: the page your last session ended on
-  function bookmark(state, bookId) {
+  // Where you're up to: the page your last reading ended on, { page, pre } (pre is set when it's a preface page)
+  function place(state, bookId) {
     const ss = sessionsOf(state, bookId);
-    for (let i = ss.length - 1; i >= 0; i--) if (Number.isFinite(ss[i].end)) return ss[i].end;
+    for (let i = ss.length - 1; i >= 0; i--) if (Number.isFinite(ss[i].end)) return { page: ss[i].end, pre: ss[i].endPre || null };
     return null;
   }
+  // The page of the book itself (chapter 1 on) you're up to; null before you've read any or while you're in the preface
+  function bookmark(state, bookId) { const p = place(state, bookId); return p && !p.pre ? p.page : null; }
   // The book you're on: the one being timed, else the last one you read that isn't finished, else the first in line
   function currentBook(state) {
     const byId = (id) => state.books.find((b) => b.id === id);
@@ -530,13 +565,13 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
     const timedSecs = ss.reduce((t, s) => t + (pagesOf(s) > 0 ? s.secs || 0 : 0), 0);
     const pages = ss.reduce((t, s) => t + pagesOf(s), 0);
     const perHour = timedSecs >= 60 && timedPages > 0 ? timedPages / (timedSecs / 3600) : null;
-    const mark = bookmark(state, bookId);
+    const at = place(state, bookId), mark = at && !at.pre ? at.page : null;
     const total = b && Number.isFinite(b.pages) ? b.pages : null;
-    const left = total !== null && mark !== null && perHour && !isRead(b) ? Math.max(0, total - mark) : null;
+    const left = total !== null && at && perHour && !isRead(b) ? Math.max(0, total - (mark || 0)) : null;
     const first = ss.length ? ss[0].date : null;
     const end = b && b.doneOn ? b.doneOn : null;
     return {
-      secs, pages, sessions: ss.length, perHour, minPerPage: perHour ? 60 / perHour : null, bookmark: mark,
+      secs, pages, sessions: ss.length, perHour, minPerPage: perHour ? 60 / perHour : null, bookmark: mark, place: at, leftPages: left,
       leftSecs: left !== null ? Math.round((left / perHour) * 3600) : null, first, last: ss.length ? ss[ss.length - 1].date : null,
       tookDays: first && end && end >= first ? diffDays(first, end) + 1 : null
     };
@@ -593,6 +628,7 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
   const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
   const num = (v) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isFinite(n) ? n : null; };
   const posInt = (v) => { const n = num(v); return n !== null && n >= 0 ? Math.round(n) : null; };
+  const PRE = ["roman", "num"];
   function blankState(today) { return { v: 1, areas: [], books: [], sessions: [], timer: null, pick: null, goalLog: [], since: today || null }; }
   // Tidy anything loaded (from this phone or a backup) so the app can trust it
   function normState(raw, today) {
@@ -608,16 +644,19 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
       if (!b || typeof b.id !== "string" || bookIds.has(b.id) || !ids.has(b.areaId)) continue;
       bookIds.add(b.id);
       s.books.push({ id: b.id, areaId: b.areaId, title: str(b.title, 120) || "Untitled", author: str(b.author, 80), pages: posInt(b.pages) || null,
-        done: !!b.done, doneOn: isDate(b.doneOn) ? b.doneOn : null, before: !!b.before, addedOn: isDate(b.addedOn) ? b.addedOn : null });
+        done: !!b.done, doneOn: isDate(b.doneOn) ? b.doneOn : null, before: !!b.before, addedOn: isDate(b.addedOn) ? b.addedOn : null,
+        preEnd: posInt(b.preEnd) || null, preRoman: !!b.preRoman });
     }
     for (const x of Array.isArray(raw.sessions) ? raw.sessions : []) {
       if (!x || typeof x.id !== "string" || !isDate(x.date)) continue;
+      const sp = PRE.includes(x.startPre) ? x.startPre : null, ep = sp && PRE.includes(x.endPre) ? x.endPre : null;
       s.sessions.push({ id: x.id, bookId: typeof x.bookId === "string" ? x.bookId : "", title: str(x.title, 120), date: x.date,
-        start: posInt(x.start), end: posInt(x.end), secs: Math.max(0, Math.round(num(x.secs) || 0)), at: typeof x.at === "string" ? x.at : "" });
+        start: posInt(x.start), end: posInt(x.end), startPre: sp, endPre: ep, preEnd: sp && !ep ? posInt(x.preEnd) : null,
+        secs: Math.max(0, Math.round(num(x.secs) || 0)), at: typeof x.at === "string" ? x.at : "" });
     }
     const t = raw.timer;
     if (t && typeof t === "object" && bookIds.has(t.bookId) && num(t.startedAt) !== null) {
-      s.timer = { bookId: t.bookId, startPage: posInt(t.startPage), startedAt: num(t.startedAt), pausedAt: num(t.pausedAt), pausedMs: Math.max(0, num(t.pausedMs) || 0), date: isDate(t.date) ? t.date : localToday(num(t.startedAt)) };
+      s.timer = { bookId: t.bookId, startPage: posInt(t.startPage), startPre: PRE.includes(t.startPre) ? t.startPre : null, startedAt: num(t.startedAt), pausedAt: num(t.pausedAt), pausedMs: Math.max(0, num(t.pausedMs) || 0), date: isDate(t.date) ? t.date : localToday(num(t.startedAt)) };
     }
     s.pick = typeof raw.pick === "string" && bookIds.has(raw.pick) ? raw.pick : null;
     const byDate = new Map();
@@ -648,7 +687,7 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
   return {
     localToday, addDays, diffDays, dayIndex, weekStart, monthKey, monthStart, monthEnd, addMonths, eachDay, monthWeeks, isDate,
     fmtMD, fmtDay, fmtMonth, fmtRange, fmtMins, fmtShort, fmtClock, timerElapsed, MONTHS,
-    isRead, booksIn, areaDone, queue, pagesOf, sessionsOf, bookmark, currentBook, bookStats,
+    isRead, booksIn, areaDone, queue, pagesOf, pagesText, toRoman, fromRoman, readPage, pageLabel, sessionsOf, place, bookmark, currentBook, bookStats,
     dayTotals, periodTotals, goalAt, setGoal, periodGoal, goalStatus, sinceDay, blankState, normState, applyBookOrder, applyAreaOrder
   };
 });
@@ -714,7 +753,9 @@ const bookById = (id) => S.st.books.find((b) => b.id === id) || null;
 const areaById = (id) => S.st.areas.find((a) => a.id === id) || null;
 const areaNum = (id) => S.st.areas.findIndex((a) => a.id === id) + 1;
 const titleOf = (s) => { const b = bookById(s.bookId); return b ? b.title : s.title || "A deleted book"; };
-const startFor = (bookId) => { const m = E.bookmark(S.st, bookId); return m !== null ? m : 1; };
+// The next reading starts where the last one stopped (a preface page or a page of the book), else on page 1
+const startPlace = (bookId) => E.place(S.st, bookId) || { page: 1, pre: null };
+const placeLabel = (p) => (p.pre ? `preface page ${E.pageLabel(p.page, p.pre)}` : `page ${p.page}`);
 const pctOf = (b, mark) => (b && b.pages && mark !== null ? Math.min(100, Math.round((mark / b.pages) * 100)) : 0);
 
 // ---------- Saving ----------
@@ -819,14 +860,15 @@ function emptyHero(title, body, act, label, area) {
 }
 function hero(b) {
   const st = S.st, t = st.timer && st.timer.bookId === b.id ? st.timer : null;
-  const stats = E.bookStats(st, b.id), mark = stats.bookmark, a = areaById(b.areaId);
+  const stats = E.bookStats(st, b.id), mark = stats.bookmark, at = stats.place, a = areaById(b.areaId);
   let prog = "";
-  if (b.pages) prog = `${hlBar(pctOf(b, mark), S.swiped ? "" : "swipe")}<p class="hero-pages"><span>${mark !== null ? `On page ${mark} of ${b.pages}` : `${b.pages} pages`}</span><span>${pctOf(b, mark)}%</span></p>`;
+  if (at && at.pre) prog = `${b.pages ? hlBar(0) : ""}<p class="hero-pages"><span>In the preface, on page ${E.pageLabel(at.page, at.pre)}</span></p>`;
+  else if (b.pages) prog = `${hlBar(pctOf(b, mark), S.swiped ? "" : "swipe")}<p class="hero-pages"><span>${mark !== null ? `On page ${mark} of ${b.pages}` : `${b.pages} pages`}</span><span>${pctOf(b, mark)}%</span></p>`;
   else if (mark !== null) prog = `<p class="hero-pages"><span>On page ${mark}</span></p>`;
   let body;
   if (t) {
     const paused = !!t.pausedAt;
-    body = `<div class="timer${paused ? " paused" : ""}"><span class="clock" id="clock" role="timer">${E.fmtClock(E.timerElapsed(t, Date.now()))}</span><span class="timer-note">${paused ? "Paused" : `Started ${esc(clockTime(t.startedAt))}`}${t.startPage !== null ? `, from page ${t.startPage}` : ""}</span></div>
+    body = `<div class="timer${paused ? " paused" : ""}"><span class="clock" id="clock" role="timer">${E.fmtClock(E.timerElapsed(t, Date.now()))}</span><span class="timer-note">${paused ? "Paused" : `Started ${esc(clockTime(t.startedAt))}`}${t.startPage !== null ? `, from ${placeLabel({ page: t.startPage, pre: t.startPre })}` : ""}</span></div>
       <div class="hero-actions">${paused ? `<button class="btn on-plum" data-act="resume">${ICON.play}Resume</button>` : `<button class="btn on-plum" data-act="pause">${ICON.pause}Pause</button>`}<button class="btn hl" data-act="finish">${ICON.check}Finish</button></div>`;
   } else {
     const so = stats.secs ? `${E.fmtMins(stats.secs)} read so far${stats.leftSecs ? `, about ${E.fmtMins(stats.leftSecs)} to go` : ""}.` : stats.sessions ? "" : "Not started yet.";
@@ -846,7 +888,8 @@ ACT.switch = () => {
 ACT.start = () => {
   const b = E.currentBook(S.st);
   if (!b || S.st.timer) return;
-  S.st.timer = { bookId: b.id, startPage: startFor(b.id), startedAt: Date.now(), pausedAt: null, pausedMs: 0, date: S.today };
+  const at = startPlace(b.id);
+  S.st.timer = { bookId: b.id, startPage: at.page, startPre: at.pre, startedAt: Date.now(), pausedAt: null, pausedMs: 0, date: S.today };
   S.st.pick = b.id;
   commit();
 };
@@ -900,9 +943,9 @@ function viewBooks() {
   return `<p class="hint">Top to bottom is your reading order. Drag the dots to move books and areas.</p><ol class="areas" aria-label="Areas, in priority order">${areas}</ol><button class="btn ghost block" data-act="add-area">${ICON.plus}Add an area</button>`;
 }
 function bookRow(b, cur) {
-  const read = E.isRead(b), mark = read ? null : E.bookmark(S.st, b.id), now = !read && cur && cur.id === b.id;
+  const read = E.isRead(b), at = read ? null : E.place(S.st, b.id), now = !read && cur && cur.id === b.id;
   const sub = b.before ? (b.author ? `${b.author}, read before` : "Read before") : b.author;
-  const side = now ? `<span class="tag now">Reading</span>` : mark !== null ? `<span class="b-side">p. ${mark}</span>` : "";
+  const side = now ? `<span class="tag now">Reading</span>` : at ? `<span class="b-side">${at.pre ? `Preface p. ${E.pageLabel(at.page, at.pre)}` : `p. ${at.page}`}</span>` : "";
   return `<li class="brow${read ? " is-read" : ""}" data-book="${esc(b.id)}"><button class="grip" data-bgrip="${esc(b.id)}" aria-label="Move ${esc(b.title)}. Drag, or use the arrow keys.">${ICON.grip}</button><button class="rdot" data-act="toggle-read" data-id="${esc(b.id)}" role="checkbox" aria-checked="${read}" aria-label="Read ${esc(b.title)}">${ICON.check}</button><button class="b-main" data-act="book" data-id="${esc(b.id)}"><strong>${esc(b.title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ""}</button>${side}</li>`;
 }
 function toggleRead(id) {
@@ -1125,7 +1168,7 @@ function openWeek(ws) {
   });
 }
 function sessRow(s, withTitle) {
-  const sub = `p. ${s.start}–${s.end}, ${plural(E.pagesOf(s), "page")}`;
+  const sub = `${E.pagesText(s)}, ${plural(E.pagesOf(s), "page")}`;
   return `<li><button class="srow" data-x="sess" data-id="${esc(s.id)}"><span class="sr-main"><strong class="${withTitle ? "serif" : ""}">${esc(withTitle ? titleOf(s) : dayWord(s.date))}</strong><span>${esc(sub)}</span></span><span class="sr-side">${E.fmtMins(s.secs)}</span></button></li>`;
 }
 
@@ -1138,7 +1181,8 @@ function bookOptions(sel, gone) {
   if (gone) h += `<option value="${esc(gone.bookId)}" selected>${esc(gone.title || "A deleted book")} (deleted)</option>`;
   return h;
 }
-// One form for finishing the timer, adding reading by hand and fixing a saved reading
+// One form for finishing the timer, adding reading by hand and fixing a saved reading.
+// Each page box has a Preface tick, so a preface numbered on its own (ix, xvi… or 1, 2, 3) never mixes with the book's pages.
 function readingForm(o) {
   const st = S.st, s0 = o.session || null, t = o.mode === "finish" ? st.timer : null;
   if (o.mode === "finish" && !t) return;
@@ -1147,49 +1191,91 @@ function readingForm(o) {
   const gone = s0 && !bookById(s0.bookId) ? s0 : null;
   const elapsed = t ? Math.round(E.timerElapsed(t, Date.now()) / 1000) : 0;
   const minsInit = s0 ? String(Math.round(s0.secs / 60)) : t ? String(Math.round(elapsed / 60)) : "";
-  const startInit = s0 ? s0.start : t ? (t.startPage !== null ? t.startPage : startFor(bookId)) : startFor(bookId);
+  const from0 = s0 ? { page: s0.start, pre: s0.startPre } : t && t.startPage !== null ? { page: t.startPage, pre: t.startPre || null } : startPlace(bookId);
+  const to0 = s0 ? { page: s0.end, pre: s0.endPre } : null;
+  const preEndOf = (id) => { const b = bookById(id); return b && b.preEnd ? E.pageLabel(b.preEnd, b.preRoman ? "roman" : "num") : ""; };
   const sh = openSheet({ title: t ? "Save your reading" : s0 ? "Edit reading" : "Add reading", focus: true });
   const b0 = bookById(bookId);
   const long = t && elapsed > 4 * 3600 ? "That's over 4 hours. If the timer ran on, fix the minutes." : "";
   const when = t ? (t.date === S.today ? clockTime(t.startedAt) : `${t.date === E.addDays(S.today, -1) ? "yesterday" : E.fmtDay(t.date)}, ${clockTime(t.startedAt)}`) : "";
-  sh.body.innerHTML = (t ? `<p class="rf-book"><strong>${esc(b0.title)}</strong><span>Started ${esc(when)}${t.startPage !== null ? `, from page ${t.startPage}` : ""}</span></p>`
+  const pageBox = (id, label, val, pre) => `<div class="field pg"><label class="field-l" for="${id}">${label}</label><input id="${id}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${esc(val)}"><label class="pre-tick"><input type="checkbox" id="${id}-pre"${pre ? " checked" : ""}><span>Preface</span></label></div>`;
+  sh.body.innerHTML = (t ? `<p class="rf-book"><strong>${esc(b0.title)}</strong><span>Started ${esc(when)}${t.startPage !== null ? `, from ${esc(placeLabel(from0))}` : ""}</span></p>`
       : field("Book", `<select id="rf-book">${bookOptions(bookId, gone)}</select>`) + field("Day", `<input type="date" id="rf-date" max="${S.today}" value="${esc(s0 ? s0.date : o.date || S.today)}">`)) +
-    `<div class="grid2">${field("From page", `<input id="rf-start" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(startInit)}">`)}${field("To page", `<input id="rf-end" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(s0 ? s0.end : "")}">`)}</div>` +
+    `<div class="grid2">${pageBox("rf-start", "From page", E.pageLabel(from0.page, from0.pre), !!from0.pre)}${pageBox("rf-end", "To page", to0 ? E.pageLabel(to0.page, to0.pre) : "", to0 ? !!to0.pre : !!from0.pre)}</div>` +
+    `<div class="field" id="rf-pe-row" hidden><label class="field-l" for="rf-pe">The preface ends on page</label><input id="rf-pe" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${esc(s0 && s0.preEnd ? E.pageLabel(s0.preEnd, s0.startPre) : preEndOf(bookId))}"><span class="field-h">So the rest of the preface counts too. You only need it once per book.</span></div>` +
     field("Minutes", `<input id="rf-min" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(minsInit)}">`, long) +
     `<label class="check" id="rf-done-row"><input type="checkbox" id="rf-done"><span>I finished the book</span></label><p class="form-err" id="rf-err" role="alert" hidden></p>`;
   sh.setFoot(t ? `<button class="btn ghost" data-x="discard">Discard</button><button class="btn plum" data-x="save">Save</button>`
     : s0 ? `<button class="btn ghost danger-t" data-x="delete">${ICON.trash}Delete</button><button class="btn plum" data-x="save">Save</button>` : `<button class="btn plum block" data-x="save">Save</button>`);
   const B = sh.body, endIn = $("#rf-end", B), startIn = $("#rf-start", B), doneBox = $("#rf-done", B), doneRow = $("#rf-done-row", B);
-  let startTouched = false, doneTouched = false;
+  const sPre = $("#rf-start-pre", B), ePre = $("#rf-end-pre", B), peRow = $("#rf-pe-row", B), peIn = $("#rf-pe", B);
+  let startTouched = false, doneTouched = false, endPreTouched = !!s0;
+  // Preface boxes take letters (ix, xvi); the others open the number pad
+  const mode = (inp, pre) => { inp.setAttribute("inputmode", pre ? "text" : "numeric"); if (pre) inp.removeAttribute("pattern"); else inp.setAttribute("pattern", "[0-9]*"); };
+  mode(peIn, true);
   const showDone = () => { const b = bookById(bookId); doneRow.hidden = !!s0 || !b || E.isRead(b); };
-  showDone();
+  const sync = () => { mode(startIn, sPre.checked); mode(endIn, ePre.checked); peRow.hidden = !(sPre.checked && !ePre.checked); endIn.oninput(); };
   startIn.oninput = () => { startTouched = true; };
   doneBox.onchange = () => { doneTouched = true; };
   endIn.oninput = () => {
-    const b = bookById(bookId), n = intIn(endIn.value);
-    if (!doneTouched) doneBox.checked = !!(b && b.pages && Number.isInteger(n) && n >= b.pages);
+    const b = bookById(bookId), r = ePre.checked ? null : E.readPage(endIn.value, false);
+    if (!doneTouched) doneBox.checked = !!(b && b.pages && r && r.n >= b.pages);
+  };
+  // Ticking Preface on From clears the suggested page 1 (it's a page of the book), and usually you stay in the preface
+  sPre.onchange = () => {
+    if (sPre.checked && !startTouched && !s0 && !from0.pre) startIn.value = "";
+    if (!sPre.checked || !endPreTouched) ePre.checked = sPre.checked;
+    sync(); startIn.focus();
+  };
+  ePre.onchange = () => {
+    endPreTouched = true;
+    if (ePre.checked && !sPre.checked) { sPre.checked = true; if (!startTouched && !s0 && !from0.pre) startIn.value = ""; }
+    sync(); endIn.focus();
   };
   const sel = $("#rf-book", B);
-  if (sel) sel.onchange = () => { bookId = sel.value; if (!startTouched) startIn.value = startFor(bookId); endIn.oninput(); showDone(); };
-  setTimeout(() => endIn.focus(), 60);
+  if (sel) sel.onchange = () => {
+    bookId = sel.value;
+    if (!startTouched) { const at = startPlace(bookId); startIn.value = E.pageLabel(at.page, at.pre); sPre.checked = !!at.pre; if (!endPreTouched) ePre.checked = sPre.checked; }
+    if (!(s0 && s0.preEnd)) peIn.value = preEndOf(bookId);
+    sync(); showDone();
+  };
+  showDone(); sync();
+  setTimeout(() => (startIn.value ? endIn : startIn).focus(), 60);
   const err = (m) => { const e = $("#rf-err", B); e.textContent = m; e.hidden = false; };
+  B.addEventListener("input", () => { $("#rf-err", B).hidden = true; });
+  const badPage = (val, pre, started) => pre ? "Type the preface page as it's printed, like ix or 5."
+    : E.fromRoman(val) ? `Tick Preface for a page like ${val.trim().toLowerCase()}.` : `Type the page you ${started ? "started" : "stopped"} on as a number.`;
   const go = () => {
     const b = bookById(bookId);
     if (!b && !gone) return err("Pick a book.");
     const date = t ? t.date : $("#rf-date", B).value;
     if (!E.isDate(date) || date > S.today) return err("Pick a day up to today.");
-    const start = intIn(startIn.value), end = intIn(endIn.value), mins = intIn($("#rf-min", B).value);
-    if (start === null || Number.isNaN(start)) return err("Type the page you started on.");
-    if (end === null || Number.isNaN(end)) return err("Type the page you stopped on.");
-    if (end < start) return err(`You stopped before page ${start}. Check the pages.`);
+    const from = E.readPage(startIn.value, sPre.checked), to = E.readPage(endIn.value, ePre.checked), mins = intIn($("#rf-min", B).value);
+    if (from === null) return err("Type the page you started on.");
+    if (from === false) return err(badPage(startIn.value, sPre.checked, true));
+    if (to === null) return err("Type the page you stopped on.");
+    if (to === false) return err(badPage(endIn.value, ePre.checked, false));
+    if (!sPre.checked && ePre.checked) return err("You can't go from the book back into the preface. Check the Preface ticks.");
+    let preEnd = null;
+    if (sPre.checked && !ePre.checked) {
+      preEnd = E.readPage(peIn.value, true);
+      if (!preEnd) return err("Type the page the preface ends on, like xxiv.");
+      if (preEnd.n < from.n) return err(`The preface can't end before page ${E.pageLabel(from.n, from.style)}, where you started.`);
+    } else if (to.n < from.n) return err(`You stopped before page ${E.pageLabel(from.n, from.style)}. Check the pages.`);
     if (mins === null || Number.isNaN(mins)) return err("Type how many minutes you read.");
     if (mins > 24 * 60) return err("That's more than a day. Check the minutes.");
     const prev = clone(S.st);
     const secs = t && $("#rf-min", B).value.trim() === minsInit ? elapsed : mins * 60;
-    const sess = { id: s0 ? s0.id : uid("s"), bookId: b ? b.id : gone.bookId, title: b ? b.title : gone.title, date, start, end, secs, at: s0 ? s0.at : nowISO() };
+    const sess = { id: s0 ? s0.id : uid("s"), bookId: b ? b.id : gone.bookId, title: b ? b.title : gone.title, date, start: from.n, end: to.n,
+      startPre: from.style, endPre: to.style, preEnd: preEnd ? preEnd.n : null, secs, at: s0 ? s0.at : nowISO() };
     S.st.sessions = S.st.sessions.filter((x) => x.id !== sess.id).concat([sess]);
+    if (b) {
+      const style = to.style || from.style;
+      if (style) b.preRoman = style === "roman";
+      if (preEnd) b.preEnd = preEnd.n;
+    }
     if (t) S.st.timer = null;
-    let msg = s0 ? "Reading saved" : `Saved ${E.fmtMins(secs)} and ${plural(end - start, "page")}`;
+    let msg = s0 ? "Reading saved" : `Saved ${E.fmtMins(secs)} and ${plural(E.pagesOf(sess), "page")}`;
     if (b && !doneRow.hidden && doneBox.checked) {
       b.done = true; b.doneOn = date;
       if (S.st.pick === b.id) S.st.pick = null;
@@ -1213,7 +1299,7 @@ function readingForm(o) {
       S.st.sessions = S.st.sessions.filter((x) => x.id !== s0.id); sh.close(true); commit("Reading deleted", prev);
     }
   };
-  B.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); go(); } });
+  B.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.type !== "checkbox") { e.preventDefault(); go(); } });
 }
 function editSession(id) { const s = S.st.sessions.find((x) => x.id === id); if (s) readingForm({ mode: "edit", session: s }); }
 
@@ -1229,7 +1315,7 @@ function openBook(id) {
     const cells = [];
     if (stt.secs || stt.pages) { cells.push(["Time read", E.fmtMins(stt.secs)]); cells.push(["Pages read", String(stt.pages)]); }
     if (stt.perHour) cells.push(["Pace", `${Math.round(stt.perHour)} pages an hour`, `${one(stt.minPerPage)} min a page`]);
-    if (stt.leftSecs !== null) cells.push(["Time left", `About ${E.fmtMins(stt.leftSecs)}`, plural(Math.max(0, b.pages - stt.bookmark), "page") + " to go"]);
+    if (stt.leftSecs !== null) cells.push(["Time left", `About ${E.fmtMins(stt.leftSecs)}`, plural(stt.leftPages, "page") + " to go"]);
     if (stt.first) cells.push(["Started", withYear(stt.first)]);
     if (b.done && b.doneOn) cells.push(["Finished", withYear(b.doneOn), stt.tookDays ? `Took ${plural(stt.tookDays, "day")}` : ""]);
     const ss = E.sessionsOf(st, b.id).slice().reverse();
@@ -1238,6 +1324,7 @@ function openBook(id) {
     else if (!read && !isCur) act = `<button class="btn plum" data-x="now">${ICON.read}Read this now</button>`;
     act += read ? `<button class="btn ghost" data-x="unread">Mark as not read</button>` : `<button class="btn ghost" data-x="read">${ICON.check}Mark as read</button>`;
     sh.body.innerHTML = `<div class="bk-head"><p class="bk-title">${esc(b.title)}</p>${b.author ? `<p class="bk-author">${esc(b.author)}</p>` : ""}<p class="bk-meta">Book ${pos + 1} of ${inArea.length} in ${esc(a.name)}${b.pages ? `, ${b.pages} pages` : ""}${read ? "" : isCur ? ", reading now" : ""}</p></div>
+      ${!read && stt.place && stt.place.pre ? `<div class="bk-prog">${b.pages ? hlBar(0) : ""}<p class="bk-meta">In the preface, on page ${E.pageLabel(stt.place.page, stt.place.pre)}</p></div>` : ""}
       ${b.pages && !read && stt.bookmark !== null ? `<div class="bk-prog">${hlBar(pctOf(b, stt.bookmark))}<p class="bk-meta">On page ${stt.bookmark} of ${b.pages}, ${pctOf(b, stt.bookmark)}%</p></div>` : ""}
       ${b.before ? `<p class="note">You read this before you started tracking, so it has no time.</p>` : ""}
       ${cells.length ? `<dl class="stats">${cells.map(([k, v, sub]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}${sub ? `<small>${esc(sub)}</small>` : ""}</dd></div>`).join("")}</dl>` : ""}
