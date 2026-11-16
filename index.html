@@ -319,6 +319,8 @@ input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
 .pre-tick { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; justify-self: start; font-size: 14.5px; font-weight: 500; color: var(--ink-2); }
 .pre-tick input { width: 20px; height: 20px; margin: 0; accent-color: var(--plum); flex: none; }
 @media (prefers-color-scheme: dark) { .pre-tick input { accent-color: #8E5DBA; } }
+.pe-row { display: grid; gap: 6px; }
+.pe-row .field-h { margin: 0; }
 .check-wrap { display: grid; gap: 0; }
 .check-wrap .field-h { margin: -4px 0 0 34px; }
 .check { display: flex; align-items: center; gap: 12px; min-height: 44px; font-weight: 500; }
@@ -526,10 +528,14 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
     return false;
   }
   const pageLabel = (n, style) => (style === "roman" ? toRoman(n) : String(n));
-  // Pages read in one sitting. From the preface into chapter 1 counts the rest of the preface plus the chapter pages.
+  // Pages read in one sitting. From the preface into the book counts the rest of the preface, then the book's pages from
+  // the page it starts on (pages in a gap between them, like a blank page 1 and 2, aren't counted).
   function pagesOf(s) {
     if (!Number.isFinite(s.start) || !Number.isFinite(s.end)) return 0;
-    if (s.startPre && !s.endPre) return Math.max(0, (Number.isFinite(s.preEnd) ? s.preEnd : s.start) - s.start) + s.end;
+    if (s.startPre && !s.endPre) {
+      const preEnd = Number.isFinite(s.preEnd) ? s.preEnd : s.start, from = s.bookStart > 0 ? s.bookStart : 1;
+      return Math.max(0, preEnd - s.start) + Math.max(0, s.end - from + 1);
+    }
     if (!s.startPre && s.endPre) return 0;
     return s.end >= s.start ? s.end - s.start : 0;
   }
@@ -645,13 +651,13 @@ html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
       bookIds.add(b.id);
       s.books.push({ id: b.id, areaId: b.areaId, title: str(b.title, 120) || "Untitled", author: str(b.author, 80), pages: posInt(b.pages) || null,
         done: !!b.done, doneOn: isDate(b.doneOn) ? b.doneOn : null, before: !!b.before, addedOn: isDate(b.addedOn) ? b.addedOn : null,
-        preEnd: posInt(b.preEnd) || null, preRoman: !!b.preRoman });
+        preEnd: posInt(b.preEnd) || null, preRoman: !!b.preRoman, bookStart: posInt(b.bookStart) || null });
     }
     for (const x of Array.isArray(raw.sessions) ? raw.sessions : []) {
       if (!x || typeof x.id !== "string" || !isDate(x.date)) continue;
       const sp = PRE.includes(x.startPre) ? x.startPre : null, ep = sp && PRE.includes(x.endPre) ? x.endPre : null;
       s.sessions.push({ id: x.id, bookId: typeof x.bookId === "string" ? x.bookId : "", title: str(x.title, 120), date: x.date,
-        start: posInt(x.start), end: posInt(x.end), startPre: sp, endPre: ep, preEnd: sp && !ep ? posInt(x.preEnd) : null,
+        start: posInt(x.start), end: posInt(x.end), startPre: sp, endPre: ep, preEnd: sp && !ep ? posInt(x.preEnd) : null, bookStart: sp && !ep ? posInt(x.bookStart) || null : null,
         secs: Math.max(0, Math.round(num(x.secs) || 0)), at: typeof x.at === "string" ? x.at : "" });
     }
     const t = raw.timer;
@@ -1194,6 +1200,7 @@ function readingForm(o) {
   const from0 = s0 ? { page: s0.start, pre: s0.startPre } : t && t.startPage !== null ? { page: t.startPage, pre: t.startPre || null } : startPlace(bookId);
   const to0 = s0 ? { page: s0.end, pre: s0.endPre } : null;
   const preEndOf = (id) => { const b = bookById(id); return b && b.preEnd ? E.pageLabel(b.preEnd, b.preRoman ? "roman" : "num") : ""; };
+  const bookStartOf = (id) => { const b = bookById(id); return String((b && b.bookStart) || 1); };
   const sh = openSheet({ title: t ? "Save your reading" : s0 ? "Edit reading" : "Add reading", focus: true });
   const b0 = bookById(bookId);
   const long = t && elapsed > 4 * 3600 ? "That's over 4 hours. If the timer ran on, fix the minutes." : "";
@@ -1202,13 +1209,15 @@ function readingForm(o) {
   sh.body.innerHTML = (t ? `<p class="rf-book"><strong>${esc(b0.title)}</strong><span>Started ${esc(when)}${t.startPage !== null ? `, from ${esc(placeLabel(from0))}` : ""}</span></p>`
       : field("Book", `<select id="rf-book">${bookOptions(bookId, gone)}</select>`) + field("Day", `<input type="date" id="rf-date" max="${S.today}" value="${esc(s0 ? s0.date : o.date || S.today)}">`)) +
     `<div class="grid2">${pageBox("rf-start", "From page", E.pageLabel(from0.page, from0.pre), !!from0.pre)}${pageBox("rf-end", "To page", to0 ? E.pageLabel(to0.page, to0.pre) : "", to0 ? !!to0.pre : !!from0.pre)}</div>` +
-    `<div class="field" id="rf-pe-row" hidden><label class="field-l" for="rf-pe">The preface ends on page</label><input id="rf-pe" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${esc(s0 && s0.preEnd ? E.pageLabel(s0.preEnd, s0.startPre) : preEndOf(bookId))}"><span class="field-h">So the rest of the preface counts too. You only need it once per book.</span></div>` +
+    `<div class="pe-row" id="rf-pe-row" hidden><div class="grid2"><div class="field"><label class="field-l" for="rf-pe">Preface ends on page</label><input id="rf-pe" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${esc(s0 && s0.preEnd ? E.pageLabel(s0.preEnd, s0.startPre) : preEndOf(bookId))}"></div>` +
+    `<div class="field"><label class="field-l" for="rf-bs">Book starts on page</label><input id="rf-bs" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(s0 && s0.preEnd ? String(s0.bookStart || 1) : bookStartOf(bookId))}"></div></div>` +
+    `<p class="field-h">Any gap in between isn't counted. You only need these once per book.</p></div>` +
     field("Minutes", `<input id="rf-min" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(minsInit)}">`, long) +
     `<label class="check" id="rf-done-row"><input type="checkbox" id="rf-done"><span>I finished the book</span></label><p class="form-err" id="rf-err" role="alert" hidden></p>`;
   sh.setFoot(t ? `<button class="btn ghost" data-x="discard">Discard</button><button class="btn plum" data-x="save">Save</button>`
     : s0 ? `<button class="btn ghost danger-t" data-x="delete">${ICON.trash}Delete</button><button class="btn plum" data-x="save">Save</button>` : `<button class="btn plum block" data-x="save">Save</button>`);
   const B = sh.body, endIn = $("#rf-end", B), startIn = $("#rf-start", B), doneBox = $("#rf-done", B), doneRow = $("#rf-done-row", B);
-  const sPre = $("#rf-start-pre", B), ePre = $("#rf-end-pre", B), peRow = $("#rf-pe-row", B), peIn = $("#rf-pe", B);
+  const sPre = $("#rf-start-pre", B), ePre = $("#rf-end-pre", B), peRow = $("#rf-pe-row", B), peIn = $("#rf-pe", B), bsIn = $("#rf-bs", B);
   let startTouched = false, doneTouched = false, endPreTouched = !!s0;
   // Preface boxes take letters (ix, xvi); the others open the number pad
   const mode = (inp, pre) => { inp.setAttribute("inputmode", pre ? "text" : "numeric"); if (pre) inp.removeAttribute("pattern"); else inp.setAttribute("pattern", "[0-9]*"); };
@@ -1236,7 +1245,7 @@ function readingForm(o) {
   if (sel) sel.onchange = () => {
     bookId = sel.value;
     if (!startTouched) { const at = startPlace(bookId); startIn.value = E.pageLabel(at.page, at.pre); sPre.checked = !!at.pre; if (!endPreTouched) ePre.checked = sPre.checked; }
-    if (!(s0 && s0.preEnd)) peIn.value = preEndOf(bookId);
+    if (!(s0 && s0.preEnd)) { peIn.value = preEndOf(bookId); bsIn.value = bookStartOf(bookId); }
     sync(); showDone();
   };
   showDone(); sync();
@@ -1256,23 +1265,26 @@ function readingForm(o) {
     if (to === null) return err("Type the page you stopped on.");
     if (to === false) return err(badPage(endIn.value, ePre.checked, false));
     if (!sPre.checked && ePre.checked) return err("You can't go from the book back into the preface. Check the Preface ticks.");
-    let preEnd = null;
+    let preEnd = null, bookStart = null;
     if (sPre.checked && !ePre.checked) {
       preEnd = E.readPage(peIn.value, true);
       if (!preEnd) return err("Type the page the preface ends on, like xxiv.");
       if (preEnd.n < from.n) return err(`The preface can't end before page ${E.pageLabel(from.n, from.style)}, where you started.`);
+      bookStart = intIn(bsIn.value);
+      if (!bookStart) return err("Type the page the book starts on, like 1 or 3.");
+      if (to.n < bookStart) return err(`You stopped before page ${bookStart}, where the book starts. Check the pages.`);
     } else if (to.n < from.n) return err(`You stopped before page ${E.pageLabel(from.n, from.style)}. Check the pages.`);
     if (mins === null || Number.isNaN(mins)) return err("Type how many minutes you read.");
     if (mins > 24 * 60) return err("That's more than a day. Check the minutes.");
     const prev = clone(S.st);
     const secs = t && $("#rf-min", B).value.trim() === minsInit ? elapsed : mins * 60;
     const sess = { id: s0 ? s0.id : uid("s"), bookId: b ? b.id : gone.bookId, title: b ? b.title : gone.title, date, start: from.n, end: to.n,
-      startPre: from.style, endPre: to.style, preEnd: preEnd ? preEnd.n : null, secs, at: s0 ? s0.at : nowISO() };
+      startPre: from.style, endPre: to.style, preEnd: preEnd ? preEnd.n : null, bookStart, secs, at: s0 ? s0.at : nowISO() };
     S.st.sessions = S.st.sessions.filter((x) => x.id !== sess.id).concat([sess]);
     if (b) {
       const style = to.style || from.style;
       if (style) b.preRoman = style === "roman";
-      if (preEnd) b.preEnd = preEnd.n;
+      if (preEnd) { b.preEnd = preEnd.n; b.bookStart = bookStart; }
     }
     if (t) S.st.timer = null;
     let msg = s0 ? "Reading saved" : `Saved ${E.fmtMins(secs)} and ${plural(E.pagesOf(sess), "page")}`;
