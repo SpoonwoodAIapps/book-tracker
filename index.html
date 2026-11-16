@@ -1,0 +1,1494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Book Tracker</title>
+<meta name="description" content="Your reading list in priority order, a reading timer, and how much you read each day, week and month. Your data stays on this device.">
+<meta name="theme-color" content="#F4F3F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17111D" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Books">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400&display=swap">
+<style>
+/* Book Tracker: plum ink on lavender-grey paper, with one highlighter. Literata for books and the numbers that matter,
+   the phone's own font for everything else. */
+:root {
+  --paper: #F4F3F7; --surface: #FFFFFF; --sunk: #ECE9F1; --ink: #2A1F36; --ink-2: #4A4055; --muted: #6E6579; --line: #E3DFEA; --line-2: #D0C8DA;
+  --plum: #3E2152; --plum-edge: #3E2152; --plum-soft: #ECE5F3; --plum-text: #5A3477; --on-plum: #F7F2FB; --on-plum-2: #CDBFDB; --plum-line: rgba(255, 255, 255, 0.24);
+  --hl: #FFE15A; --hl-ink: #2A1F36;
+  --good: #1F8A5B; --good-soft: #E2F2E9; --bad: #C2413A; --bad-soft: #FBE6E4;
+  --scrim: rgba(30, 18, 40, 0.45);
+  --serif: "Literata", Georgia, "Times New Roman", serif;
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --tab-h: 62px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17111D; --surface: #211A29; --sunk: #2A2233; --ink: #F1ECF6; --ink-2: #D5CCDE; --muted: #A79DB3; --line: #352B40; --line-2: #4A3F57;
+    --plum: #3A2150; --plum-edge: #4A2A66; --plum-soft: #33244A; --plum-text: #D2B9EA; --on-plum: #F7F2FB; --on-plum-2: #CBBBDB;
+    --hl: #F2D54E;
+    --good: #46C08A; --good-soft: #163327; --bad: #F07A72; --bad-soft: #3D1E22;
+    --scrim: rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 16px/1.45 var(--ui); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 3px solid var(--plum-text); outline-offset: 2px; }
+.hero :focus-visible { outline-color: var(--hl); }
+.serif { font-family: var(--serif); }
+.muted { color: var(--muted); }
+.small { font-size: 14px; margin: 0; }
+.spacer { flex: 1; }
+.good-t { color: var(--good); font-weight: 650; }
+
+/* ---------- Frame ---------- */
+.app { max-width: 620px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+.topbar { display: flex; align-items: center; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 0 6px; }
+.wordmark { margin: 0; display: flex; align-items: center; gap: 9px; font: 600 20px/1 var(--serif); letter-spacing: -0.005em; }
+.mark { width: 13px; height: 19px; background: var(--plum); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%); position: relative; }
+.mark::after { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 4px; background: var(--hl); }
+@media (prefers-color-scheme: dark) { .mark { background: var(--plum-text); } }
+.view { padding: 6px 0 calc(var(--tab-h) + 36px + env(safe-area-inset-bottom)); display: grid; gap: 16px; align-content: start; }
+.loading { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 80px 16px; color: var(--muted); }
+.spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--plum-text); animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Tab bar: the current tab is highlighted like a word on a page ---------- */
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(3, 1fr); max-width: 620px; margin: 0 auto;
+  padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--surface) 94%, transparent); border-top: 1px solid var(--line); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+@media (min-width: 640px) { .tabbar { border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; } }
+.tab { display: grid; justify-items: center; gap: 3px; min-height: 50px; padding: 5px 0 3px; border: 0; background: none; color: var(--muted); font-size: 12.5px; font-weight: 600; border-radius: 10px; }
+.tab span { padding: 0 3px; }
+.tab[aria-current="page"] { color: var(--ink); }
+.tab[aria-current="page"] span { background: linear-gradient(transparent 42%, var(--hl) 42%, var(--hl) 92%, transparent 92%); border-radius: 2px 5px 3px 6px; }
+@media (prefers-color-scheme: dark) { .tab[aria-current="page"] span { background: var(--hl); color: var(--hl-ink); padding: 0 5px; } }
+
+/* ---------- Buttons ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid transparent; font-weight: 650; font-size: 16px; white-space: nowrap; text-decoration: none; }
+.btn.sm { min-height: 38px; padding: 0 12px; font-size: 14.5px; border-radius: 10px; gap: 6px; }
+.btn.sm .i { width: 18px; height: 18px; }
+.btn.block { width: 100%; }
+.btn.hl { background: var(--hl); color: var(--hl-ink); }
+.btn.plum { background: var(--plum); color: var(--on-plum); }
+@media (prefers-color-scheme: dark) { .btn.plum { background: #6B3E92; } }
+.btn.ghost { background: var(--surface); border-color: var(--line-2); color: var(--ink); }
+.btn.on-plum { background: transparent; border-color: var(--plum-line); color: var(--on-plum); }
+.btn.danger { background: var(--bad); color: #fff; }
+.btn.danger-t { color: var(--bad); }
+.btn:active:not(:disabled) { filter: brightness(0.94); }
+.btn:disabled { opacity: 0.45; }
+.icon-btn { width: 44px; height: 44px; display: inline-grid; place-items: center; border: 0; border-radius: 12px; background: none; color: var(--ink); padding: 0; flex: none; }
+.icon-btn:active { background: var(--sunk); }
+.icon-btn.on-plum { color: var(--on-plum); }
+.icon-btn.on-plum:active { background: rgba(255, 255, 255, 0.1); }
+.link { border: 0; background: none; padding: 6px 0; color: var(--plum-text); font-weight: 650; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-align: left; }
+.link.on-plum { color: var(--on-plum-2); font-weight: 600; font-size: 14.5px; justify-self: start; }
+
+/* ---------- The highlighter ---------- */
+.hl-bar { position: relative; height: 15px; }
+.hl-bar::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px; background: var(--line-2); }
+.hl-bar > i { position: absolute; left: 0; top: 1px; bottom: 1px; min-width: 7px; max-width: 100%; background: var(--hl); border-radius: 3px 9px 4px 11px / 7px 4px 9px 5px; transform-origin: left center; }
+@media (prefers-color-scheme: light) { .hl-bar > i { mix-blend-mode: multiply; } }
+.hl-bar.zero > i { display: none; }
+.hl-bar.swipe > i { animation: swipe 0.75s cubic-bezier(0.3, 0.7, 0.2, 1) 0.15s both; }
+@keyframes swipe { from { transform: scaleX(0); } }
+
+/* ---------- Reading now ---------- */
+.hero { background: var(--plum); color: var(--on-plum); border: 1px solid var(--plum-edge); border-radius: 22px; padding: 14px 18px 18px; display: grid; gap: 10px; }
+.hero.empty { padding: 22px 20px 20px; gap: 12px; }
+.hero-top { display: flex; align-items: center; gap: 6px; margin: 0 -8px -4px 0; min-height: 44px; }
+.hero-area { display: inline-flex; align-items: center; gap: 9px; border: 0; background: none; padding: 6px 0; color: var(--on-plum-2); font-size: 15px; font-weight: 600; text-align: left; min-width: 0; }
+.hero-area .num { width: 24px; height: 24px; flex: none; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.13); color: var(--on-plum); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hero-book { display: grid; gap: 2px; }
+.hero-title { margin: 0; font: 600 28px/1.14 var(--serif); letter-spacing: -0.01em; text-wrap: balance; }
+.hero-title button { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; letter-spacing: inherit; }
+.hero-author { margin: 0; font: italic 400 17px/1.3 var(--serif); color: var(--on-plum-2); }
+.hero .hl-bar { margin-top: 6px; }
+.hero .hl-bar::before { background: var(--plum-line); }
+.hero .hl-bar > i { mix-blend-mode: normal; }
+.hero-pages { margin: -4px 0 0; display: flex; justify-content: space-between; gap: 12px; color: var(--on-plum-2); font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.hero-note { margin: 2px 0 0; color: var(--on-plum-2); font-size: 15.5px; }
+.hero-actions { display: flex; gap: 10px; margin-top: 4px; }
+.hero-actions .btn { flex: 1 1 0; }
+.timer { display: grid; gap: 2px; margin-top: 6px; }
+.clock { font: 500 56px/1 var(--serif); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.02em; }
+.timer.paused .clock { color: var(--on-plum-2); }
+.timer-note { color: var(--on-plum-2); font-size: 14.5px; }
+
+/* ---------- This week and this month ---------- */
+.goals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gcard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px 12px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.g-label { margin: 0 0 2px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.g-big { margin: 0; font: 600 26px/1.1 var(--serif); font-variant-numeric: tabular-nums lining-nums; }
+.g-of { margin: 0 0 4px; font-size: 13.5px; color: var(--muted); }
+.g-of small { display: block; font-size: 12.5px; }
+.g-pages { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+.g-status { margin: 0; font-size: 14px; color: var(--muted); }
+.g-status .i { width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; stroke-width: 2.4; }
+.g-status .link { padding: 2px 0; font-size: 14px; }
+.gcard.hit { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.past { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -6px; }
+.past-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 6px 12px 6px 10px; border-radius: 999px; border: 1px solid transparent; font-size: 14px; text-align: left; }
+.past-chip .i { width: 17px; height: 17px; stroke-width: 2.5; }
+.past-chip strong { font-weight: 650; }
+.past-chip.hit { background: var(--good-soft); color: var(--good); }
+.past-chip.miss { background: var(--bad-soft); color: var(--bad); }
+
+/* ---------- Lists ---------- */
+.sect { display: grid; gap: 8px; }
+.h1 { margin: 0; font: 600 26px/1.15 var(--serif); }
+.h2 { margin: 0; font: 600 20px/1.2 var(--serif); }
+.h3 { margin: 10px 0 -4px; font: 600 18px/1.2 var(--serif); }
+.h3.first { margin-top: 0; }
+.lines { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.lines li + li { border-top: 1px solid var(--line); }
+.bline { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 14px; border: 0; background: none; text-align: left; }
+.bline:active { background: var(--sunk); }
+.bl-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.bl-main strong { font: 600 17px/1.25 var(--serif); }
+.bl-main span { color: var(--muted); font-size: 14px; }
+.bl-area { flex: none; max-width: 40%; font-size: 13px; font-weight: 600; color: var(--plum-text); background: var(--plum-soft); padding: 3px 9px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.start-list { display: grid; gap: 12px; justify-items: start; padding: 10px 2px; }
+.start-list p { margin: 0; color: var(--ink-2); max-width: 46ch; }
+.hint { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* ---------- Books: areas in priority order, books in reading order ---------- */
+.areas { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.area { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.area-head { display: flex; align-items: center; gap: 4px; min-height: 62px; padding-right: 12px; }
+.area-n { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--plum-soft); color: var(--plum-text); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; margin-right: 8px; }
+.area.done .area-n { background: var(--plum); color: var(--on-plum); }
+@media (prefers-color-scheme: dark) { .area.done .area-n { background: #6B3E92; } }
+.area-n .i { width: 17px; height: 17px; stroke-width: 2.6; }
+.area-name { flex: 1; min-width: 0; display: grid; gap: 1px; border: 0; background: none; padding: 10px 0; text-align: left; }
+.area-name strong { font: 600 20px/1.2 var(--serif); }
+.area-name span { color: var(--muted); font-size: 14px; }
+.blist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.brow { display: flex; align-items: center; gap: 2px; min-height: 60px; padding-right: 12px; background: var(--surface); }
+.brow + .brow, .b-ph + .brow, .brow + .b-ph { border-top: 1px solid var(--line); }
+.blist > .brow.lifted:first-child + .brow { border-top: 0; }
+.grip { align-self: stretch; width: 42px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--muted); touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.grip .i { width: 21px; height: 21px; }
+.rdot { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; background: none; padding: 0; margin-right: 4px; color: transparent; }
+.rdot .i { width: 26px; height: 26px; padding: 4px; border-radius: 50%; border: 2px solid var(--line-2); stroke-width: 2.8; box-sizing: border-box; }
+.rdot[aria-checked="true"] { color: var(--on-plum); }
+.rdot[aria-checked="true"] .i { background: var(--plum); border-color: var(--plum); }
+@media (prefers-color-scheme: dark) { .rdot[aria-checked="true"] .i { background: #6B3E92; border-color: #6B3E92; } }
+.b-main { flex: 1; min-width: 0; display: grid; gap: 1px; border: 0; background: none; padding: 10px 0; text-align: left; }
+.b-main strong { font: 600 16.5px/1.25 var(--serif); }
+.b-main span { color: var(--muted); font-size: 14px; }
+.brow.is-read .b-main strong { color: var(--ink-2); font-weight: 500; }
+.b-side { flex: none; font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tag { flex: none; font-size: 12.5px; font-weight: 650; padding: 2px 8px; border-radius: 3px 8px 4px 9px / 6px 3px 7px 4px; }
+.tag.now { background: var(--hl); color: var(--hl-ink); }
+.b-empty { display: none; padding: 16px 16px 16px 54px; color: var(--muted); font-size: 14.5px; }
+.blist.is-empty .b-empty { display: block; }
+.add-book { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 0 16px 0 52px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--plum-text); font-weight: 650; font-size: 15px; text-align: left; }
+.add-book .i { width: 18px; height: 18px; }
+.add-book:active { background: var(--sunk); }
+.b-ph { border: 2px dashed var(--line-2); border-radius: 12px; margin: 4px 8px; }
+.area-ph { border: 2px dashed var(--line-2); border-radius: 18px; }
+.brow.lifted { position: fixed; z-index: 35; margin: 0; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 14px 32px rgba(30, 18, 40, 0.22); transform: scale(1.02); }
+.area.lifted { position: fixed; z-index: 35; margin: 0; box-shadow: 0 14px 32px rgba(30, 18, 40, 0.24); transform: scale(1.02); }
+.lifted .grip { cursor: grabbing; }
+html.dragging-areas .blist, html.dragging-areas .add-book { display: none; }
+html.dragging, html.dragging * { -webkit-user-select: none; user-select: none; cursor: grabbing; }
+
+/* ---------- Calendar ---------- */
+.cal-nav { display: flex; align-items: center; gap: 2px; margin: 0 0 -4px -10px; }
+.cal-title { margin: 0 4px; font: 600 22px/1.2 var(--serif); min-width: 0; }
+.pcard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 6px; }
+.pc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pc-time { margin: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pc-time strong { font: 600 28px/1.1 var(--serif); font-variant-numeric: tabular-nums lining-nums; }
+.pc-time span { color: var(--muted); font-size: 14.5px; }
+.pc-foot { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+.pcard .link { padding: 2px 0; font-size: 14.5px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 14px; font-weight: 650; background: var(--sunk); color: var(--ink-2); white-space: nowrap; }
+.pill .i { width: 16px; height: 16px; stroke-width: 2.5; }
+.pill.hit { background: var(--good-soft); color: var(--good); }
+.pill.miss { background: var(--bad-soft); color: var(--bad); }
+.pcard.hit { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.pcard.miss { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.calcard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 10px 12px; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(0, 1.3fr); gap: 4px; }
+.dow { font-size: 12px; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.dow.wk-h { text-align: center; }
+.day, .wk { min-width: 0; aspect-ratio: 1 / 1.08; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; padding: 4px 4px 5px; border: 1px solid transparent; border-radius: 8px; background: none; text-align: left; font-variant-numeric: tabular-nums; }
+.dn { font-size: 12px; font-weight: 600; color: var(--ink-2); line-height: 1; }
+.dv { font-size: 11.5px; font-weight: 650; line-height: 1; white-space: nowrap; color: var(--muted); max-width: 100%; overflow: hidden; }
+.day.read { background: var(--hl); border-radius: 4px 9px 5px 10px / 8px 4px 9px 5px; }
+.day.read .dn, .day.read .dv { color: var(--hl-ink); }
+.day.out { opacity: 0.42; }
+.day.future .dn { color: var(--muted); }
+.day.today { border-color: var(--ink); }
+.day.read.today { box-shadow: inset 0 0 0 1px var(--ink); border-color: transparent; }
+.wk { background: var(--sunk); align-items: center; justify-content: center; gap: 3px; }
+.wv { font-size: 12.5px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.wp { font-size: 11px; color: var(--muted); line-height: 1; white-space: nowrap; }
+.wk.hit { background: var(--good-soft); color: var(--good); }
+.wk.miss { background: var(--bad-soft); color: var(--bad); }
+.wk.hit .wp, .wk.miss .wp { color: inherit; opacity: 0.85; }
+.wk:disabled { background: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 2px 0; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.sw.hit { background: var(--good-soft); box-shadow: inset 0 0 0 1.5px var(--good); }
+.sw.miss { background: var(--bad-soft); box-shadow: inset 0 0 0 1.5px var(--bad); }
+
+/* ---------- Sheets ---------- */
+html.sheet-open, html.sheet-open body { overflow: hidden; }
+.sheet-wrap { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.sheet-backdrop { position: absolute; inset: 0; background: var(--scrim); animation: fade 0.18s ease-out; }
+.sheet { position: relative; width: 100%; max-width: 560px; max-height: calc(100% - 28px - env(safe-area-inset-top)); display: flex; flex-direction: column; background: var(--paper); border-radius: 20px 20px 0 0; animation: slide 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet-head { display: flex; align-items: center; gap: 6px; padding: 10px max(10px, env(safe-area-inset-right)) 8px max(18px, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); }
+.sheet-head h2 { margin: 0; flex: 1; min-width: 0; font: 600 19px/1.2 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 16px max(16px, env(safe-area-inset-right)) 22px max(16px, env(safe-area-inset-left)); display: grid; grid-auto-rows: max-content; gap: 14px; align-content: start; }
+.sheet-foot { display: flex; gap: 10px; padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); border-top: 1px solid var(--line); background: var(--paper); }
+.sheet-foot .btn { flex: 1; }
+@media (min-width: 700px) {
+  .sheet-wrap { align-items: center; padding: 24px; }
+  .sheet { border-radius: 20px; max-height: min(820px, calc(100% - 48px)); }
+  .sheet-foot { border-radius: 0 0 20px 20px; padding-bottom: 12px; }
+}
+@keyframes slide { from { transform: translateY(32px); } to { transform: none; } }
+@keyframes rise { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+@keyframes fade { from { opacity: 0; } }
+.lead { margin: 0; font-size: 17px; }
+.note { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--plum-soft); color: var(--ink-2); font-size: 14.5px; }
+.bk-head { display: grid; gap: 2px; }
+.bk-title { margin: 0; font: 600 25px/1.15 var(--serif); letter-spacing: -0.01em; text-wrap: balance; }
+.bk-author { margin: 0; font: italic 400 17px/1.3 var(--serif); color: var(--ink-2); }
+.bk-meta { margin: 4px 0 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.bk-prog { display: grid; gap: 0; }
+.bk-prog .bk-meta { margin-top: 0; }
+.stats { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.stats div { background: var(--surface); padding: 10px 12px; min-width: 0; }
+.stats div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.stats dt { font-size: 13px; color: var(--muted); font-weight: 600; }
+.stats dd { margin: 2px 0 0; font: 600 17px/1.25 var(--serif); font-variant-numeric: tabular-nums lining-nums; }
+.stats dd small { display: block; font: 400 13px/1.3 var(--ui); color: var(--muted); margin-top: 2px; }
+.row-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.row-btns .btn { flex: 1 1 auto; }
+.row-btns.sm { gap: 8px; margin-top: 4px; }
+.srows { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.srows li + li { border-top: 1px solid var(--line); }
+.srow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; border: 0; background: none; text-align: left; }
+.srow:active:not(:disabled) { background: var(--sunk); }
+.srow:disabled { color: var(--muted); }
+.sr-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sr-main strong { font-weight: 650; }
+.sr-main strong.serif { font: 600 16.5px/1.25 var(--serif); }
+.sr-main span { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.sr-side { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; }
+.day-tot { margin: 0; font-size: 16px; }
+.day-tot strong { font: 600 22px/1.2 var(--serif); margin-right: 2px; }
+.rf-book { margin: 0; display: grid; gap: 2px; }
+.rf-book strong { font: 600 20px/1.2 var(--serif); }
+.rf-book span { color: var(--muted); font-size: 14.5px; }
+
+/* ---------- Forms ---------- */
+.field { display: grid; gap: 6px; margin: 0; min-width: 0; }
+.field-l { font-weight: 600; font-size: 15px; }
+.field-h { color: var(--muted); font-size: 13.5px; }
+:where(input:not([type=checkbox]):not([type=file]), select) { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); font-size: 17px; }
+select { appearance: none; -webkit-appearance: none; padding-right: 36px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 19px) 21px, calc(100% - 13px) 21px; background-size: 6px 6px; background-repeat: no-repeat; text-overflow: ellipsis; }
+input[type=date] { min-width: 0; -webkit-appearance: none; appearance: none; display: block; }
+input[type=date]::-webkit-date-and-time-value { text-align: left; }
+input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
+.unit-in { display: flex; align-items: center; gap: 8px; }
+.unit-in > span { color: var(--muted); font-weight: 600; flex: none; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.check-wrap { display: grid; gap: 0; }
+.check-wrap .field-h { margin: -4px 0 0 34px; }
+.check { display: flex; align-items: center; gap: 12px; min-height: 44px; font-weight: 500; }
+.check input { width: 22px; height: 22px; accent-color: var(--plum); flex: none; margin: 0; }
+@media (prefers-color-scheme: dark) { .check input { accent-color: #8E5DBA; } }
+.form-err { margin: 0; color: var(--bad); font-weight: 600; }
+.file { position: relative; overflow: hidden; }
+.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.restore { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface); }
+.restore p { margin: 0; }
+
+/* ---------- Choices ---------- */
+.choices { display: grid; gap: 6px; }
+.choice { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 12px 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: left; }
+.choice:active { background: var(--sunk); }
+.choice > .i { color: var(--muted); }
+.choice-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.choice-main strong { font: 600 16.5px/1.25 var(--serif); }
+.choice-main span { color: var(--muted); font-size: 14px; }
+
+/* ---------- Toast ---------- */
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tab-h) + 22px + env(safe-area-inset-bottom)); z-index: 60; width: max-content; max-width: calc(100% - 24px); display: flex; align-items: center; gap: 14px; padding: 12px 12px 12px 16px; background: var(--ink); color: var(--paper); border-radius: 12px; font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); animation: rise 0.2s ease-out; }
+.toast button { border: 0; background: none; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; padding: 6px 4px; flex: none; }
+html.sheet-open .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><p class="wordmark"><span class="mark" aria-hidden="true"></span>Book Tracker</p><span class="spacer"></span><button class="icon-btn" data-act="settings" aria-label="Settings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></header>
+  <main class="view" id="view"></main>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+/* Storage on this device: IndexedDB, falling back to localStorage, then memory.
+   Its own database, key prefix and channel, so the other apps on this site are left alone. */
+(function () {
+  "use strict";
+  const DB_NAME = "book-tracker", LS_KEY = "bt:state";
+  let idb = null, mode = "memory", mem = null;
+  const listeners = new Set();
+  let chan = null;
+  try { chan = new BroadcastChannel("book-tracker"); chan.onmessage = () => listeners.forEach((fn) => fn()); } catch (e) { chan = null; }
+  window.addEventListener("storage", (e) => { if (e.key === LS_KEY && mode === "local") listeners.forEach((fn) => fn()); });
+
+  function openIdb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains("kv")) req.result.createObjectStore("kv", { keyPath: "k" }); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error("blocked"));
+    });
+  }
+  async function init() {
+    try { idb = await openIdb(); mode = "idb"; } catch (e) {
+      try { localStorage.setItem("bt:test", "1"); localStorage.removeItem("bt:test"); mode = "local"; } catch (e2) { mode = "memory"; }
+    }
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* not supported */ }
+    return mode;
+  }
+  function load() {
+    if (mode === "idb") {
+      return new Promise((resolve, reject) => {
+        const q = idb.transaction("kv", "readonly").objectStore("kv").get("state");
+        q.onsuccess = () => resolve(q.result ? q.result.v : null);
+        q.onerror = () => reject(q.error);
+      });
+    }
+    try {
+      const raw = mode === "local" ? localStorage.getItem(LS_KEY) : mem;
+      return Promise.resolve(raw ? JSON.parse(raw) : null);
+    } catch (e) { return Promise.resolve(null); }
+  }
+  const quota = (e) => { const err = new Error("save failed"); err.code = e && (e.name === "QuotaExceededError" || e.code === 22) ? "quota" : "other"; return err; };
+  function save(state) {
+    const done = () => { if (chan) try { chan.postMessage("changed"); } catch (e) { /* closed */ } };
+    if (mode === "idb") {
+      return new Promise((resolve, reject) => {
+        let tx;
+        try { tx = idb.transaction("kv", "readwrite"); tx.objectStore("kv").put({ k: "state", v: state }); } catch (e) { reject(quota(e)); return; }
+        tx.oncomplete = () => { done(); resolve(); };
+        tx.onerror = () => reject(quota(tx.error));
+        tx.onabort = () => reject(quota(tx.error));
+      });
+    }
+    try {
+      if (mode === "local") localStorage.setItem(LS_KEY, JSON.stringify(state)); else mem = JSON.stringify(state);
+      done();
+      return Promise.resolve();
+    } catch (e) { return Promise.reject(quota(e)); }
+  }
+  async function persisted() { try { return !!(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()); } catch (e) { return false; } }
+  // On a phone, the share sheet saves the file (Save to Files); elsewhere it downloads
+  async function saveFile(name, text, type) {
+    const blob = new Blob([text], { type });
+    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (mobile && typeof File === "function" && navigator.canShare) {
+      const file = new File([blob], name, { type });
+      if (navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: name }); return "shared"; }
+        catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return "downloaded";
+  }
+  window.Store = { init, load, save, persisted, saveFile, mode: () => mode, onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
+})();
+
+</script>
+<script>
+/* Book Tracker logic: dates, reading order, totals, pace and goals. No DOM, so it can be tested on its own. */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) module.exports = factory();
+  else root.Engine = factory();
+})(typeof self !== "undefined" ? self : this, function () {
+  "use strict";
+
+  // ---------- Dates (local, YYYY-MM-DD; weeks run Monday to Sunday) ----------
+  const pad = (n) => String(n).padStart(2, "0");
+  const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const fromISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 12); };
+  const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && toISO(fromISO(s)) === s;
+  function localToday(now) { return toISO(now ? new Date(now) : new Date()); }
+  function addDays(s, n) { const d = fromISO(s); d.setDate(d.getDate() + n); return toISO(d); }
+  function diffDays(a, b) { return Math.round((fromISO(b) - fromISO(a)) / 86400000); }
+  function dayIndex(s) { return (fromISO(s).getDay() + 6) % 7; }   // Monday 0 … Sunday 6
+  function weekStart(s) { return addDays(s, -dayIndex(s)); }
+  const monthKey = (s) => s.slice(0, 7);
+  const monthStart = (mk) => `${mk}-01`;
+  function monthEnd(mk) { const [y, m] = mk.split("-").map(Number); return toISO(new Date(y, m, 0, 12)); }
+  function addMonths(mk, n) { const [y, m] = mk.split("-").map(Number); const d = new Date(y, m - 1 + n, 1, 12); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+  function eachDay(a, b) { const out = []; for (let d = a; d <= b; d = addDays(d, 1)) out.push(d); return out; }
+  // Mon–Sun weeks that touch a month
+  function monthWeeks(mk) { const out = []; for (let w = weekStart(monthStart(mk)); w <= monthEnd(mk); w = addDays(w, 7)) out.push(w); return out; }
+
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const MON3 = MONTHS.map((m) => m.slice(0, 3));
+  const DOW = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  function fmtMD(s) { const d = fromISO(s); return `${MON3[d.getMonth()]} ${d.getDate()}`; }
+  function fmtDay(s) { return `${DOW[dayIndex(s)]}, ${fmtMD(s)}`; }
+  function fmtMonth(mk) { const [y, m] = mk.split("-").map(Number); return `${MONTHS[m - 1]} ${y}`; }
+  function fmtRange(a, b) {
+    const da = fromISO(a), db = fromISO(b);
+    return da.getMonth() === db.getMonth() ? `${MON3[da.getMonth()]} ${da.getDate()}–${db.getDate()}` : `${fmtMD(a)} – ${fmtMD(b)}`;
+  }
+
+  // ---------- Time ----------
+  // "2h 10m", "45m", "0m"
+  function fmtMins(secs) {
+    const m = Math.round((secs || 0) / 60), h = Math.floor(m / 60), r = m % 60;
+    return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`;
+  }
+  // Calendar cells: "45m", "1h20", "2h"
+  function fmtShort(secs) {
+    const m = Math.round((secs || 0) / 60), h = Math.floor(m / 60), r = m % 60;
+    return h ? (r ? `${h}h${pad(r)}` : `${h}h`) : `${r}m`;
+  }
+  // The running timer: "4:05", "24:13", "1:02:05"
+  function fmtClock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return h ? `${h}:${pad(m)}:${pad(r)}` : `${m}:${pad(r)}`;
+  }
+  function timerElapsed(t, now) {
+    if (!t) return 0;
+    const end = t.pausedAt || now;
+    return Math.max(0, end - t.startedAt - (t.pausedMs || 0));
+  }
+
+  // ---------- Reading order ----------
+  const isRead = (b) => !!(b && (b.done || b.before));
+  function booksIn(state, areaId) { return state.books.filter((b) => b.areaId === areaId); }
+  function areaDone(state, areaId) { const bs = booksIn(state, areaId); return bs.length > 0 && bs.every(isRead); }
+  // Books still to read, in priority order: areas top to bottom, books top to bottom
+  function queue(state) {
+    const out = [];
+    for (const a of state.areas) for (const b of booksIn(state, a.id)) if (!isRead(b)) out.push(b);
+    return out;
+  }
+  const pagesOf = (s) => (Number.isFinite(s.start) && Number.isFinite(s.end) && s.end >= s.start ? s.end - s.start : 0);
+  const byTime = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.at || "").localeCompare(String(b.at || "")));
+  function sessionsOf(state, bookId) { return state.sessions.filter((s) => s.bookId === bookId).sort(byTime); }
+  // Where you're up to: the page your last session ended on
+  function bookmark(state, bookId) {
+    const ss = sessionsOf(state, bookId);
+    for (let i = ss.length - 1; i >= 0; i--) if (Number.isFinite(ss[i].end)) return ss[i].end;
+    return null;
+  }
+  // The book you're on: the one being timed, else the last one you read that isn't finished, else the first in line
+  function currentBook(state) {
+    const byId = (id) => state.books.find((b) => b.id === id);
+    if (state.timer && byId(state.timer.bookId)) return byId(state.timer.bookId);
+    if (state.pick && byId(state.pick) && !isRead(byId(state.pick))) return byId(state.pick);
+    const ss = state.sessions.slice().sort(byTime);
+    for (let i = ss.length - 1; i >= 0; i--) { const b = byId(ss[i].bookId); if (b && !isRead(b)) return b; }
+    return queue(state)[0] || null;
+  }
+  // Time, pages and pace for one book
+  function bookStats(state, bookId) {
+    const b = state.books.find((x) => x.id === bookId);
+    const ss = sessionsOf(state, bookId);
+    const secs = ss.reduce((t, s) => t + (s.secs || 0), 0);
+    const timedPages = ss.reduce((t, s) => t + (s.secs > 0 ? pagesOf(s) : 0), 0);
+    const timedSecs = ss.reduce((t, s) => t + (pagesOf(s) > 0 ? s.secs || 0 : 0), 0);
+    const pages = ss.reduce((t, s) => t + pagesOf(s), 0);
+    const perHour = timedSecs >= 60 && timedPages > 0 ? timedPages / (timedSecs / 3600) : null;
+    const mark = bookmark(state, bookId);
+    const total = b && Number.isFinite(b.pages) ? b.pages : null;
+    const left = total !== null && mark !== null && perHour && !isRead(b) ? Math.max(0, total - mark) : null;
+    const first = ss.length ? ss[0].date : null;
+    const end = b && b.doneOn ? b.doneOn : null;
+    return {
+      secs, pages, sessions: ss.length, perHour, minPerPage: perHour ? 60 / perHour : null, bookmark: mark,
+      leftSecs: left !== null ? Math.round((left / perHour) * 3600) : null, first, last: ss.length ? ss[ss.length - 1].date : null,
+      tookDays: first && end && end >= first ? diffDays(first, end) + 1 : null
+    };
+  }
+
+  // ---------- Totals and goals ----------
+  function dayTotals(sessions) {
+    const m = new Map();
+    for (const s of sessions) {
+      const t = m.get(s.date) || { secs: 0, pages: 0 };
+      t.secs += s.secs || 0; t.pages += pagesOf(s);
+      m.set(s.date, t);
+    }
+    return m;
+  }
+  function periodTotals(sessions, a, b) {
+    let secs = 0, pages = 0;
+    for (const s of sessions) if (s.date >= a && s.date <= b) { secs += s.secs || 0; pages += pagesOf(s); }
+    return { secs, pages };
+  }
+  // Goals are kept with the day they were set, so changing one doesn't rejudge weeks that are over
+  function goalAt(log, date) {
+    let g = { weekMin: null, monthMin: null };
+    for (const x of log || []) if (x.date <= date) g = { weekMin: x.weekMin, monthMin: x.monthMin };
+    return g;
+  }
+  function setGoal(log, date, weekMin, monthMin) {
+    return (log || []).filter((x) => x.date !== date).concat([{ date, weekMin: weekMin || null, monthMin: monthMin || null }]).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  // The goal for one week or month: the one in place when it ends, cut down for the days before you started
+  function periodGoal(state, kind, a, b) {
+    const full = goalAt(state.goalLog, b)[kind === "week" ? "weekMin" : "monthMin"];
+    if (!(full > 0)) return null;
+    const since = sinceDay(state);
+    if (since && since > b) return null;
+    const days = diffDays(a, b) + 1, from = since && since > a ? since : null;
+    const counted = from ? diffDays(from, b) + 1 : days;
+    return { min: Math.max(1, Math.round((full * counted) / days)), full, from };
+  }
+  // "hit" (green) once the goal is reached, "miss" (red) if it ends short, "open" while it runs, "none" without a goal
+  function goalStatus(secs, goal, b, today) {
+    if (!goal) return "none";
+    if (secs >= goal.min * 60) return "hit";
+    return b >= today ? "open" : "miss";
+  }
+  // The first day you used the app: the earliest of the day it was set up and your first timed reading
+  function sinceDay(state) {
+    let s = state.since || null;
+    for (const x of state.sessions) if (x.secs > 0 && (!s || x.date < s)) s = x.date;
+    return s;
+  }
+
+  // ---------- Saved data ----------
+  const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const num = (v) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isFinite(n) ? n : null; };
+  const posInt = (v) => { const n = num(v); return n !== null && n >= 0 ? Math.round(n) : null; };
+  function blankState(today) { return { v: 1, areas: [], books: [], sessions: [], timer: null, pick: null, goalLog: [], since: today || null }; }
+  // Tidy anything loaded (from this phone or a backup) so the app can trust it
+  function normState(raw, today) {
+    const s = blankState(today);
+    if (!raw || typeof raw !== "object") return s;
+    const ids = new Set();
+    for (const a of Array.isArray(raw.areas) ? raw.areas : []) {
+      if (!a || typeof a.id !== "string" || ids.has(a.id)) continue;
+      ids.add(a.id); s.areas.push({ id: a.id, name: str(a.name, 60) || "Untitled" });
+    }
+    const bookIds = new Set();
+    for (const b of Array.isArray(raw.books) ? raw.books : []) {
+      if (!b || typeof b.id !== "string" || bookIds.has(b.id) || !ids.has(b.areaId)) continue;
+      bookIds.add(b.id);
+      s.books.push({ id: b.id, areaId: b.areaId, title: str(b.title, 120) || "Untitled", author: str(b.author, 80), pages: posInt(b.pages) || null,
+        done: !!b.done, doneOn: isDate(b.doneOn) ? b.doneOn : null, before: !!b.before, addedOn: isDate(b.addedOn) ? b.addedOn : null });
+    }
+    for (const x of Array.isArray(raw.sessions) ? raw.sessions : []) {
+      if (!x || typeof x.id !== "string" || !isDate(x.date)) continue;
+      s.sessions.push({ id: x.id, bookId: typeof x.bookId === "string" ? x.bookId : "", title: str(x.title, 120), date: x.date,
+        start: posInt(x.start), end: posInt(x.end), secs: Math.max(0, Math.round(num(x.secs) || 0)), at: typeof x.at === "string" ? x.at : "" });
+    }
+    const t = raw.timer;
+    if (t && typeof t === "object" && bookIds.has(t.bookId) && num(t.startedAt) !== null) {
+      s.timer = { bookId: t.bookId, startPage: posInt(t.startPage), startedAt: num(t.startedAt), pausedAt: num(t.pausedAt), pausedMs: Math.max(0, num(t.pausedMs) || 0), date: isDate(t.date) ? t.date : localToday(num(t.startedAt)) };
+    }
+    s.pick = typeof raw.pick === "string" && bookIds.has(raw.pick) ? raw.pick : null;
+    const byDate = new Map();
+    for (const g of Array.isArray(raw.goalLog) ? raw.goalLog : []) if (g && isDate(g.date)) byDate.set(g.date, { date: g.date, weekMin: posInt(g.weekMin) || null, monthMin: posInt(g.monthMin) || null });
+    s.goalLog = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+    s.since = isDate(raw.since) ? raw.since : s.since;
+    return s;
+  }
+  // Put books in the order shown after a drag: lists = [{ areaId, ids }] for every area's list
+  function applyBookOrder(state, lists) {
+    const byId = new Map(state.books.map((b) => [b.id, b]));
+    const out = [], seen = new Set();
+    for (const l of lists) for (const id of l.ids) {
+      const b = byId.get(id);
+      if (!b || seen.has(id)) continue;
+      seen.add(id); out.push(Object.assign({}, b, { areaId: l.areaId }));
+    }
+    for (const b of state.books) if (!seen.has(b.id)) out.push(b);
+    return out;
+  }
+  function applyAreaOrder(state, ids) {
+    const byId = new Map(state.areas.map((a) => [a.id, a]));
+    const out = ids.map((id) => byId.get(id)).filter(Boolean);
+    for (const a of state.areas) if (!out.includes(a)) out.push(a);
+    return out;
+  }
+
+  return {
+    localToday, addDays, diffDays, dayIndex, weekStart, monthKey, monthStart, monthEnd, addMonths, eachDay, monthWeeks, isDate,
+    fmtMD, fmtDay, fmtMonth, fmtRange, fmtMins, fmtShort, fmtClock, timerElapsed, MONTHS,
+    isRead, booksIn, areaDone, queue, pagesOf, sessionsOf, bookmark, currentBook, bookStats,
+    dayTotals, periodTotals, goalAt, setGoal, periodGoal, goalStatus, sinceDay, blankState, normState, applyBookOrder, applyAreaOrder
+  };
+});
+
+</script>
+<script>
+(function () {
+"use strict";
+/* Book Tracker screens: Reading, Books, Calendar and Settings. The build wraps this file in one scope. */
+const E = window.Engine, DB = window.Store;
+
+// ---------- Small utilities ----------
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clone = (x) => JSON.parse(JSON.stringify(x));
+const uid = (p) => `${p}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
+const nowISO = () => new Date().toISOString();
+const cssId = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&"));
+function clockTime(ms) { try { return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+function stamp(iso) { try { return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+function dayWord(d) { return d === S.today ? "Today" : d === E.addDays(S.today, -1) ? "Yesterday" : E.fmtDay(d); }
+function withYear(d) { return d.slice(0, 4) === S.today.slice(0, 4) ? E.fmtMD(d) : `${E.fmtMD(d)}, ${d.slice(0, 4)}`; }
+// What's typed in a box: "" is null, anything that isn't a whole number is NaN
+function intIn(v) { const s = String(v === null || v === undefined ? "" : v).trim(); if (!s) return null; return /^\d+$/.test(s) ? Number(s) : NaN; }
+function hoursIn(v) { const s = String(v || "").trim().replace(",", "."); if (!s) return null; const n = Number(s); return Number.isFinite(n) && n >= 0 && n <= 744 ? Math.round(n * 60) : NaN; }
+const hoursOut = (min) => (min ? String(Math.round((min / 60) * 100) / 100) : "");
+const one = (n) => (Math.round(n * 10) / 10).toString();
+
+const ic = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  plus: ic('<path d="M12 5v14M5 12h14"/>'),
+  x: ic('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
+  check: ic('<path d="M5 12.5l4.5 4.5L19 7"/>'),
+  left: ic('<path d="M15 6l-6 6 6 6"/>'),
+  right: ic('<path d="M9 6l6 6-6 6"/>'),
+  up: ic('<path d="M6 15l6-6 6 6"/>'),
+  down: ic('<path d="M6 9l6 6 6-6"/>'),
+  read: ic('<path d="M12 7c-2.2-1.6-5.2-2.2-8.5-1.6v12.4c3.3-.6 6.3 0 8.5 1.6 2.2-1.6 5.2-2.2 8.5-1.6V5.4C17.2 4.8 14.2 5.4 12 7z"/><path d="M12 7v12.4"/>'),
+  books: ic('<rect x="3.5" y="4" width="4.5" height="16" rx="1"/><rect x="9.5" y="4" width="4.5" height="16" rx="1"/><path d="M15.6 5.6l3.9-1 3 15-3.9 1z"/>'),
+  cal: ic('<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'),
+  sliders: ic('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
+  play: ic('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
+  pause: ic('<path d="M9 5.5v13M15 5.5v13"/>'),
+  swap: ic('<path d="M7 4L4 7l3 3"/><path d="M4 7h12a4 4 0 0 1 4 4"/><path d="M17 20l3-3-3-3"/><path d="M20 17H8a4 4 0 0 1-4-4"/>'),
+  pencil: ic('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'),
+  trash: ic('<path d="M5 7h14M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
+  download: ic('<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14"/>'),
+  upload: ic('<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/>'),
+  grip: ic('<circle cx="9" cy="6.5" r="1" fill="currentColor"/><circle cx="15" cy="6.5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="17.5" r="1" fill="currentColor"/><circle cx="15" cy="17.5" r="1" fill="currentColor"/>')
+};
+
+// ---------- State ----------
+const TABS = ["read", "books", "calendar"];
+const S = { booted: false, today: E.localToday(), st: E.blankState(E.localToday()), tab: "read", calMonth: null, swiped: false, dirty: false };
+try { const t = localStorage.getItem("bt:tab"); if (TABS.includes(t)) S.tab = t; } catch (e) { /* first run */ }
+if (TABS.includes(location.hash.slice(1))) S.tab = location.hash.slice(1);
+function meta() { try { return JSON.parse(localStorage.getItem("bt:meta") || "{}") || {}; } catch (e) { return {}; } }
+function setMeta(m) { try { localStorage.setItem("bt:meta", JSON.stringify(Object.assign(meta(), m))); } catch (e) { /* ignore */ } }
+
+const bookById = (id) => S.st.books.find((b) => b.id === id) || null;
+const areaById = (id) => S.st.areas.find((a) => a.id === id) || null;
+const areaNum = (id) => S.st.areas.findIndex((a) => a.id === id) + 1;
+const titleOf = (s) => { const b = bookById(s.bookId); return b ? b.title : s.title || "A deleted book"; };
+const startFor = (bookId) => { const m = E.bookmark(S.st, bookId); return m !== null ? m : 1; };
+const pctOf = (b, mark) => (b && b.pages && mark !== null ? Math.min(100, Math.round((mark / b.pages) * 100)) : 0);
+
+// ---------- Saving ----------
+function saveErr(e) { toast(e && e.code === "quota" ? "Couldn't save: this phone is out of storage space." : "Couldn't save that. Try again."); }
+function save() { return DB.save(S.st).catch(saveErr); }
+// Save, redraw, and offer Undo when there's something to undo
+function commit(msg, prev, action) {
+  save(); render(); refreshSheets();
+  if (msg) toast(msg, prev ? { label: "Undo", run: () => { S.st = prev; save(); render(); refreshSheets(); } } : action || null);
+}
+
+// ---------- Rendering ----------
+function focusKey(el) {
+  if (!el || !el.closest || !el.closest("#view, #tabbar")) return null;
+  if (el.dataset.tab) return `[data-tab="${cssId(el.dataset.tab)}"]`;
+  for (const a of ["data-bgrip", "data-agrip"]) if (el.hasAttribute(a)) return `[${a}="${cssId(el.getAttribute(a))}"]`;
+  if (!el.dataset.act) return null;
+  let k = `[data-act="${cssId(el.dataset.act)}"]`;
+  for (const a of ["id", "area", "date", "start", "d"]) if (el.dataset[a]) k += `[data-${a}="${cssId(el.dataset[a])}"]`;
+  return k;
+}
+function render() {
+  S.today = E.localToday();
+  renderTabs();
+  const v = $("#view");
+  if (!S.booted) { v.innerHTML = `<div class="loading" role="status"><span class="spin" aria-hidden="true"></span>Opening your books</div>`; return; }
+  const k = focusKey(document.activeElement);
+  v.innerHTML = S.tab === "books" ? viewBooks() : S.tab === "calendar" ? viewCalendar() : viewRead();
+  if (k) { const n = $(`#view ${k}, #tabbar ${k}`); if (n) n.focus({ preventScroll: true }); }
+  syncTicker();
+}
+let renderQueued = false;
+function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); }
+function renderTabs() {
+  const k = focusKey(document.activeElement), inBar = k && document.activeElement.closest("#tabbar");
+  const tabs = [["read", "Reading", ICON.read], ["books", "Books", ICON.books], ["calendar", "Calendar", ICON.cal]];
+  $("#tabbar").innerHTML = tabs.map(([k, l, i]) => `<button class="tab" data-act="tab" data-tab="${k}"${S.tab === k ? ' aria-current="page"' : ""}>${i}<span>${l}</span></button>`).join("");
+  if (inBar) { const n = $(`#tabbar ${k}`); if (n) n.focus({ preventScroll: true }); }
+}
+function setTab(t, force) {
+  if (S.tab === t && !force) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+  S.tab = t;
+  try { localStorage.setItem("bt:tab", t); history.replaceState(null, "", "#" + t); } catch (e) { /* ignore */ }
+  render(); window.scrollTo(0, 0);
+}
+
+// The timer's clock ticks without redrawing the screen
+let ticker = null;
+function tickClock() { const el = document.getElementById("clock"); if (el && S.st.timer) el.textContent = E.fmtClock(E.timerElapsed(S.st.timer, Date.now())); }
+function syncTicker() {
+  const running = !!(S.st.timer && !S.st.timer.pausedAt);
+  if (running && !ticker) ticker = setInterval(tickClock, 1000);
+  if (!running && ticker) { clearInterval(ticker); ticker = null; }
+  tickClock();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.booted) { if (E.localToday() !== S.today) scheduleRender(); else tickClock(); } });
+
+// A highlighter swipe for progress
+function hlBar(pct, cls) {
+  const p = Math.max(0, Math.min(100, pct || 0));
+  return `<div class="hl-bar${cls ? " " + cls : ""}${p <= 0 ? " zero" : ""}" aria-hidden="true"><i style="width:${p.toFixed(1)}%"></i></div>`;
+}
+
+// ---------- Clicks on the main screens ----------
+const ACT = {};
+document.addEventListener("click", (e) => {
+  const el = e.target.closest && e.target.closest("[data-act]");
+  if (!el || el.closest(".sheet-wrap")) return;
+  const fn = ACT[el.dataset.act];
+  if (fn) { e.preventDefault(); fn(el, e); }
+});
+ACT.tab = (el) => setTab(el.dataset.tab);
+ACT.settings = () => openSettings();
+ACT["add-area"] = () => editArea(null);
+ACT["edit-area"] = (el) => editArea(el.dataset.id);
+ACT["add-book"] = (el) => editBook(null, el.dataset.area);
+ACT.book = (el) => openBook(el.dataset.id);
+ACT.day = (el) => openDay(el.dataset.date);
+ACT.week = (el) => openWeek(el.dataset.start);
+ACT.month = (el) => { S.calMonth = el.dataset.month; setTab("calendar"); };
+ACT.cal = (el) => { S.calMonth = E.addMonths(S.calMonth || E.monthKey(S.today), Number(el.dataset.d)); render(); };
+ACT["cal-now"] = () => { S.calMonth = null; render(); };
+ACT["toggle-read"] = (el) => toggleRead(el.dataset.id);
+ACT["log-manual"] = () => { const b = E.currentBook(S.st); readingForm({ mode: "add", bookId: b && b.id }); };
+
+// ---------- Reading ----------
+function viewRead() {
+  const st = S.st, cur = E.currentBook(st);
+  let h;
+  if (!st.areas.length) h = emptyHero("What do you want to get better at?", "Add an area you want to develop, like Leadership or Health. Then add the books for it.", "add-area", "Add an area");
+  else if (!st.books.length) h = emptyHero("Add your first book", `It goes under ${st.areas[0].name}. You can add more areas and books any time.`, "add-book", "Add a book", st.areas[0].id);
+  else if (!cur) h = emptyHero("You've read every book on your list", "Add the next one when you're ready.", "add-book", "Add a book");
+  else h = hero(cur);
+  if (st.books.length || st.sessions.length) h += goalCards() + pastResults();
+  const next = E.queue(st).filter((b) => !cur || b.id !== cur.id).slice(0, 3);
+  if (next.length) h += `<section class="sect"><h2 class="h2">Up next</h2><ul class="lines">${next.map(bookLine).join("")}</ul></section>`;
+  S.swiped = true;
+  return h;
+}
+function emptyHero(title, body, act, label, area) {
+  return `<section class="hero empty"><h1 class="hero-title">${esc(title)}</h1><p class="hero-note">${esc(body)}</p><div class="hero-actions"><button class="btn hl" data-act="${act}"${area ? ` data-area="${esc(area)}"` : ""}>${ICON.plus}${esc(label)}</button></div></section>`;
+}
+function hero(b) {
+  const st = S.st, t = st.timer && st.timer.bookId === b.id ? st.timer : null;
+  const stats = E.bookStats(st, b.id), mark = stats.bookmark, a = areaById(b.areaId);
+  let prog = "";
+  if (b.pages) prog = `${hlBar(pctOf(b, mark), S.swiped ? "" : "swipe")}<p class="hero-pages"><span>${mark !== null ? `On page ${mark} of ${b.pages}` : `${b.pages} pages`}</span><span>${pctOf(b, mark)}%</span></p>`;
+  else if (mark !== null) prog = `<p class="hero-pages"><span>On page ${mark}</span></p>`;
+  let body;
+  if (t) {
+    const paused = !!t.pausedAt;
+    body = `<div class="timer${paused ? " paused" : ""}"><span class="clock" id="clock" role="timer">${E.fmtClock(E.timerElapsed(t, Date.now()))}</span><span class="timer-note">${paused ? "Paused" : `Started ${esc(clockTime(t.startedAt))}`}${t.startPage !== null ? `, from page ${t.startPage}` : ""}</span></div>
+      <div class="hero-actions">${paused ? `<button class="btn on-plum" data-act="resume">${ICON.play}Resume</button>` : `<button class="btn on-plum" data-act="pause">${ICON.pause}Pause</button>`}<button class="btn hl" data-act="finish">${ICON.check}Finish</button></div>`;
+  } else {
+    const so = stats.secs ? `${E.fmtMins(stats.secs)} read so far${stats.leftSecs ? `, about ${E.fmtMins(stats.leftSecs)} to go` : ""}.` : stats.sessions ? "" : "Not started yet.";
+    body = `${so ? `<p class="hero-note">${so}</p>` : ""}<div class="hero-actions"><button class="btn hl" data-act="start">${ICON.play}Start reading</button></div><button class="link on-plum" data-act="log-manual">Add reading without the timer</button>`;
+  }
+  const canSwitch = !t && E.queue(st).length > 1;
+  return `<section class="hero" aria-label="Reading now">
+    <div class="hero-top"><button class="hero-area" data-act="edit-area" data-id="${esc(a.id)}"><span class="num">${areaNum(a.id)}</span>${esc(a.name)}</button><span class="spacer"></span>${canSwitch ? `<button class="icon-btn on-plum" data-act="switch" aria-label="Read a different book">${ICON.swap}</button>` : ""}</div>
+    <div class="hero-book"><h1 class="hero-title"><button data-act="book" data-id="${esc(b.id)}">${esc(b.title)}</button></h1>${b.author ? `<p class="hero-author">${esc(b.author)}</p>` : ""}</div>
+    ${prog}${body}</section>`;
+}
+ACT.switch = () => {
+  const cur = E.currentBook(S.st);
+  const q = E.queue(S.st);
+  choiceSheet("Read a different book", q.map((b) => [b.id, b.title, areaById(b.areaId).name + (cur && cur.id === b.id ? ", reading now" : "")]), (id) => { S.st.pick = id; commit(); });
+};
+ACT.start = () => {
+  const b = E.currentBook(S.st);
+  if (!b || S.st.timer) return;
+  S.st.timer = { bookId: b.id, startPage: startFor(b.id), startedAt: Date.now(), pausedAt: null, pausedMs: 0, date: S.today };
+  S.st.pick = b.id;
+  commit();
+};
+ACT.pause = () => { const t = S.st.timer; if (!t || t.pausedAt) return; t.pausedAt = Date.now(); commit(); };
+ACT.resume = () => { const t = S.st.timer; if (!t || !t.pausedAt) return; t.pausedMs += Date.now() - t.pausedAt; t.pausedAt = null; commit(); };
+// Finishing stops the clock while you fill in the page. Closing without saving leaves it paused.
+ACT.finish = () => { const t = S.st.timer; if (!t) return; if (!t.pausedAt) { t.pausedAt = Date.now(); save(); render(); } readingForm({ mode: "finish" }); };
+
+function goalCards() {
+  const ws = E.weekStart(S.today), mk = E.monthKey(S.today);
+  return `<section class="goals" aria-label="Reading time">${goalCard("This week", ws, E.addDays(ws, 6), "week")}${goalCard("This month", E.monthStart(mk), E.monthEnd(mk), "month")}</section>`;
+}
+function goalCard(label, a, b, kind) {
+  const t = E.periodTotals(S.st.sessions, a, b), g = E.periodGoal(S.st, kind, a, b), stt = E.goalStatus(t.secs, g, b, S.today);
+  const left = g ? g.min * 60 - t.secs : 0;
+  const status = stt === "hit" ? `<span class="good-t">${ICON.check}Goal hit</span>` : stt === "open" ? `<span>${E.fmtMins(left)} to go</span>` : `<button class="link" data-act="settings">Set a goal</button>`;
+  return `<div class="gcard ${stt}"><h2 class="g-label">${label}</h2><p class="g-big">${E.fmtMins(t.secs)}</p><p class="g-of">${g ? `of ${E.fmtMins(g.min * 60)}${g.from ? `<small>Counted from ${E.fmtMD(g.from)}</small>` : ""}` : "No goal"}</p>${g ? hlBar((t.secs / (g.min * 60)) * 100) : ""}<p class="g-pages">${plural(t.pages, "page")}</p><p class="g-status">${status}</p></div>`;
+}
+// How last week and last month went, once they're over
+function pastResults() {
+  const st = S.st, out = [];
+  const lws = E.addDays(E.weekStart(S.today), -7), lwe = E.addDays(lws, 6);
+  const lw = E.periodTotals(st.sessions, lws, lwe), lwg = E.periodGoal(st, "week", lws, lwe), lws2 = E.goalStatus(lw.secs, lwg, lwe, S.today);
+  if (lws2 === "hit" || lws2 === "miss") out.push(pastChip("Last week", lw.secs, lwg, lws2, `data-act="week" data-start="${lws}"`));
+  const lmk = E.addMonths(E.monthKey(S.today), -1), lms = E.monthStart(lmk), lme = E.monthEnd(lmk);
+  const lm = E.periodTotals(st.sessions, lms, lme), lmg = E.periodGoal(st, "month", lms, lme), lms2 = E.goalStatus(lm.secs, lmg, lme, S.today);
+  if (lms2 === "hit" || lms2 === "miss") out.push(pastChip(E.MONTHS[Number(lmk.slice(5)) - 1], lm.secs, lmg, lms2, `data-act="month" data-month="${lmk}"`));
+  return out.length ? `<div class="past">${out.join("")}</div>` : "";
+}
+function pastChip(label, secs, goal, stt, attrs) {
+  return `<button class="past-chip ${stt}" ${attrs}>${stt === "hit" ? ICON.check : ICON.x}<span><strong>${esc(label)}</strong> ${E.fmtMins(secs)} of ${E.fmtMins(goal.min * 60)}<span class="sr">, ${stt === "hit" ? "goal hit" : "goal missed"}</span></span></button>`;
+}
+function bookLine(b) {
+  const a = areaById(b.areaId);
+  return `<li><button class="bline" data-act="book" data-id="${esc(b.id)}"><span class="bl-main"><strong>${esc(b.title)}</strong>${b.author ? `<span>${esc(b.author)}</span>` : ""}</span><span class="bl-area">${esc(a ? a.name : "")}</span></button></li>`;
+}
+
+// ---------- Books ----------
+function viewBooks() {
+  const st = S.st;
+  if (!st.areas.length) return `<section class="start-list"><h1 class="h1">Your reading list</h1><p>Start with an area you want to develop, then add the books for it. The order you put them in is the order you read them.</p><button class="btn plum" data-act="add-area">${ICON.plus}Add an area</button></section>`;
+  const cur = E.currentBook(st);
+  const areas = st.areas.map((a, i) => {
+    const books = E.booksIn(st, a.id), read = books.filter(E.isRead).length, done = E.areaDone(st, a.id);
+    return `<li class="area${done ? " done" : ""}" data-area="${esc(a.id)}">
+      <div class="area-head"><button class="grip" data-agrip="${esc(a.id)}" aria-label="Move ${esc(a.name)}. Drag, or use the arrow keys.">${ICON.grip}</button><span class="area-n" aria-hidden="true">${done ? ICON.check : i + 1}</span>
+        <button class="area-name" data-act="edit-area" data-id="${esc(a.id)}"><strong>${esc(a.name)}</strong><span>${books.length ? (done ? `All ${books.length} read` : `${read} of ${books.length} read`) : "No books yet"}</span></button></div>
+      <ol class="blist${books.length ? "" : " is-empty"}" data-area="${esc(a.id)}" aria-label="Books for ${esc(a.name)}, in reading order">${books.map((b) => bookRow(b, cur)).join("")}<li class="b-empty">Drag a book here, or add one.</li></ol>
+      <button class="add-book" data-act="add-book" data-area="${esc(a.id)}">${ICON.plus}Add a book</button></li>`;
+  }).join("");
+  return `<p class="hint">Top to bottom is your reading order. Drag the dots to move books and areas.</p><ol class="areas" aria-label="Areas, in priority order">${areas}</ol><button class="btn ghost block" data-act="add-area">${ICON.plus}Add an area</button>`;
+}
+function bookRow(b, cur) {
+  const read = E.isRead(b), mark = read ? null : E.bookmark(S.st, b.id), now = !read && cur && cur.id === b.id;
+  const sub = b.before ? (b.author ? `${b.author}, read before` : "Read before") : b.author;
+  const side = now ? `<span class="tag now">Reading</span>` : mark !== null ? `<span class="b-side">p. ${mark}</span>` : "";
+  return `<li class="brow${read ? " is-read" : ""}" data-book="${esc(b.id)}"><button class="grip" data-bgrip="${esc(b.id)}" aria-label="Move ${esc(b.title)}. Drag, or use the arrow keys.">${ICON.grip}</button><button class="rdot" data-act="toggle-read" data-id="${esc(b.id)}" role="checkbox" aria-checked="${read}" aria-label="Read ${esc(b.title)}">${ICON.check}</button><button class="b-main" data-act="book" data-id="${esc(b.id)}"><strong>${esc(b.title)}</strong>${sub ? `<span>${esc(sub)}</span>` : ""}</button>${side}</li>`;
+}
+function toggleRead(id) {
+  const b = bookById(id);
+  if (!b) return;
+  const prev = clone(S.st);
+  if (E.isRead(b)) { b.done = false; b.before = false; b.doneOn = null; commit(`${b.title} is back on your list`, prev); return; }
+  b.done = true; b.doneOn = S.today;
+  if (S.st.pick === b.id) S.st.pick = null;
+  const a = areaById(b.areaId);
+  commit(E.areaDone(S.st, b.areaId) ? `Read. That's every book in ${a.name}.` : `Marked ${b.title} as read`, prev);
+}
+
+// Drag by the dots: the row lifts and follows your finger, a gap shows where it lands, and the page scrolls near the edges.
+// Areas fold down to their names while one is moving.
+let drag = null;
+document.addEventListener("pointerdown", (e) => {
+  const g = e.target && e.target.closest && e.target.closest("[data-bgrip],[data-agrip]");
+  if (!g || drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+  const kind = g.hasAttribute("data-agrip") ? "area" : "book";
+  const row = g.closest(kind === "area" ? ".area" : ".brow");
+  if (!row) return;
+  e.preventDefault();
+  drag = { kind, pid: e.pointerId, row, id: kind === "area" ? row.dataset.area : row.dataset.book, y0: e.clientY, y: e.clientY, lifted: false, raf: 0 };
+  try { g.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+  drag.raf = requestAnimationFrame(dragTick);
+});
+window.addEventListener("pointermove", (e) => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  drag.y = e.clientY;
+  if (!drag.lifted) { if (Math.abs(drag.y - drag.y0) < 6) return; liftRow(); }
+  placeRow();
+});
+window.addEventListener("pointerup", (e) => { if (drag && e.pointerId === drag.pid) endDrag(true); });
+window.addEventListener("pointercancel", (e) => { if (drag && e.pointerId === drag.pid) endDrag(false); });
+function liftRow() {
+  const d = drag;
+  const was = d.row.getBoundingClientRect();
+  d.off = d.y0 - was.top;
+  if (d.kind === "area") {
+    document.documentElement.classList.add("dragging-areas");
+    const now = d.row.getBoundingClientRect();
+    if (now.top !== was.top) window.scrollBy(0, now.top - was.top);
+  }
+  const r = d.row.getBoundingClientRect();
+  d.ph = document.createElement("li");
+  d.ph.className = d.kind === "area" ? "area-ph" : "b-ph";
+  d.ph.style.height = `${r.height}px`;
+  d.row.parentNode.insertBefore(d.ph, d.row);
+  d.off = Math.min(d.off, r.height - 4);
+  Object.assign(d.row.style, { left: `${r.left}px`, top: `${d.y - d.off}px`, width: `${r.width}px` });
+  d.row.classList.add("lifted");
+  d.lifted = true;
+  document.documentElement.classList.add("dragging");
+}
+function placeRow() {
+  const d = drag;
+  d.row.style.top = `${d.y - d.off}px`;
+  if (d.kind === "area") {
+    const list = $(".areas");
+    let ref = null;
+    for (const el of $$(":scope > .area:not(.lifted)", list)) { const r = el.getBoundingClientRect(); if (d.y < r.top + r.height / 2) { ref = el; break; } }
+    if (d.ph.nextElementSibling !== ref || d.ph.parentNode !== list) list.insertBefore(d.ph, ref);
+    let n = 0;
+    for (const el of Array.from(list.children)) {
+      const a = el === d.ph ? d.row : el.classList.contains("area") && !el.classList.contains("lifted") ? el : null;
+      if (a) { n++; if (!a.classList.contains("done")) $(".area-n", a).textContent = n; }
+    }
+    return;
+  }
+  let list = null, best = Infinity;
+  for (const l of $$(".blist")) {
+    const r = l.getBoundingClientRect(), dist = d.y < r.top ? r.top - d.y : d.y > r.bottom ? d.y - r.bottom : 0;
+    if (dist < best) { best = dist; list = l; }
+  }
+  if (!list) return;
+  let ref = $(":scope > .b-empty", list);
+  for (const el of $$(":scope > .brow:not(.lifted)", list)) { const r = el.getBoundingClientRect(); if (d.y < r.top + r.height / 2) { ref = el; break; } }
+  if (d.ph.parentNode !== list || d.ph.nextElementSibling !== ref) list.insertBefore(d.ph, ref);
+  for (const l of $$(".blist")) l.classList.toggle("is-empty", !$(":scope > .brow:not(.lifted), :scope > .b-ph", l));
+}
+function dragTick() {
+  if (!drag) return;
+  if (drag.lifted) {
+    const tb = $("#tabbar"), bottom = tb ? tb.getBoundingClientRect().top : window.innerHeight, edge = 70;
+    let dy = 0;
+    if (drag.y < edge) dy = -Math.min(18, Math.ceil((edge - drag.y) / 4));
+    else if (drag.y > bottom - edge) dy = Math.min(18, Math.ceil((drag.y - (bottom - edge)) / 4));
+    if (dy) { const y0 = window.scrollY; window.scrollBy(0, dy); if (window.scrollY !== y0) placeRow(); }
+  }
+  drag.raf = requestAnimationFrame(dragTick);
+}
+function endDrag(commitIt) {
+  const d = drag;
+  drag = null;
+  cancelAnimationFrame(d.raf);
+  if (!d.lifted) return;
+  document.documentElement.classList.remove("dragging", "dragging-areas");
+  if (commitIt && d.ph.parentNode) d.ph.parentNode.insertBefore(d.row, d.ph);
+  d.ph.remove();
+  d.row.classList.remove("lifted");
+  d.row.removeAttribute("style");
+  if (!commitIt || !document.contains(d.row)) return render();
+  if (d.kind === "area") setAreaOrder($$(".areas > .area").map((x) => x.dataset.area), d.id);
+  else setBookOrder($$(".blist").map((l) => ({ areaId: l.dataset.area, ids: $$(":scope > .brow", l).map((x) => x.dataset.book) })), d.id);
+  if (S.dirty) { S.dirty = false; render(); }
+}
+function setBookOrder(lists, movedId) {
+  const key = (books) => books.map((b) => b.id + ":" + b.areaId).join("|");
+  const books = E.applyBookOrder(S.st, lists);
+  if (key(books) === key(S.st.books)) { render(); return; }
+  const prev = clone(S.st), from = (bookById(movedId) || {}).areaId;
+  S.st.books = books;
+  const b = bookById(movedId);
+  commit(b && b.areaId !== from ? `Moved ${b.title} to ${areaById(b.areaId).name}` : "", b && b.areaId !== from ? prev : null);
+}
+function setAreaOrder(ids, movedId) {
+  if (ids.join("|") === S.st.areas.map((a) => a.id).join("|")) { render(); return; }
+  const prev = clone(S.st);
+  S.st.areas = E.applyAreaOrder(S.st, ids);
+  const a = areaById(movedId);
+  commit(a ? `${a.name} is now number ${areaNum(a.id)}` : "", prev);
+}
+// The arrow keys move a book or an area one place (a book goes into the next area at its edge)
+function moveBook(id, dir) {
+  const st = S.st, b = bookById(id);
+  if (!b) return;
+  const lists = st.areas.map((a) => ({ areaId: a.id, ids: E.booksIn(st, a.id).map((x) => x.id) }));
+  const li = lists.findIndex((l) => l.areaId === b.areaId), i = lists[li].ids.indexOf(id);
+  lists[li].ids.splice(i, 1);
+  if (dir < 0) { if (i > 0) lists[li].ids.splice(i - 1, 0, id); else if (li > 0) lists[li - 1].ids.push(id); else lists[li].ids.unshift(id); }
+  else if (i < lists[li].ids.length) lists[li].ids.splice(i + 1, 0, id);
+  else if (li < lists.length - 1) lists[li + 1].ids.unshift(id);
+  else lists[li].ids.push(id);
+  setBookOrder(lists, id);
+}
+function moveArea(id, dir) {
+  const ids = S.st.areas.map((a) => a.id), i = ids.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  setAreaOrder(ids, id);
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && sheets.length) { e.preventDefault(); sheets[sheets.length - 1].close(); return; }
+  const g = e.target && e.target.closest && e.target.closest("[data-bgrip],[data-agrip]");
+  if (!g || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || drag) return;
+  e.preventDefault();
+  const dir = e.key === "ArrowUp" ? -1 : 1;
+  if (g.hasAttribute("data-agrip")) { moveArea(g.dataset.agrip, dir); const n = $(`[data-agrip="${cssId(g.dataset.agrip)}"]`); if (n) n.focus(); }
+  else { moveBook(g.dataset.bgrip, dir); const n = $(`[data-bgrip="${cssId(g.dataset.bgrip)}"]`); if (n) n.focus(); }
+});
+
+// ---------- Calendar ----------
+const DOW2 = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+function viewCalendar() {
+  const st = S.st, mk = S.calMonth || E.monthKey(S.today), ms = E.monthStart(mk), me = E.monthEnd(mk);
+  const since = E.sinceDay(st), days = E.dayTotals(st.sessions);
+  const mt = E.periodTotals(st.sessions, ms, me), mg = E.periodGoal(st, "month", ms, me), mstat = E.goalStatus(mt.secs, mg, me, S.today);
+  const finished = st.books.filter((b) => b.done && b.doneOn && b.doneOn >= ms && b.doneOn <= me).length;
+  let grid = DOW2.map((x) => `<span class="dow" aria-hidden="true">${x}</span>`).join("") + `<span class="dow wk-h" aria-hidden="true">Week</span>`;
+  let weekGoals = false;
+  for (const ws of E.monthWeeks(mk)) {
+    for (const d of E.eachDay(ws, E.addDays(ws, 6))) grid += dayCell(d, days.get(d), ms, me, since);
+    const we = E.addDays(ws, 6), t = E.periodTotals(st.sessions, ws, we), g = E.periodGoal(st, "week", ws, we), stt = E.goalStatus(t.secs, g, we, S.today);
+    if (g) weekGoals = true;
+    const future = ws > S.today, res = stt === "hit" ? ", goal hit" : stt === "miss" ? ", goal missed" : "";
+    grid += `<button class="wk ${stt}" data-act="week" data-start="${ws}"${future ? " disabled" : ""} aria-label="Week of ${esc(E.fmtRange(ws, we))}: ${esc(E.fmtMins(t.secs))}${g ? ` of ${esc(E.fmtMins(g.min * 60))}` : ""}, ${plural(t.pages, "page")}${res}"><span class="wv">${future ? "" : E.fmtShort(t.secs)}</span><span class="wp">${future ? "" : `${t.pages} pg`}</span></button>`;
+  }
+  const nav = `<div class="cal-nav"><button class="icon-btn" data-act="cal" data-d="-1" aria-label="Previous month">${ICON.left}</button><h1 class="cal-title">${esc(E.fmtMonth(mk))}</h1><button class="icon-btn" data-act="cal" data-d="1" aria-label="Next month">${ICON.right}</button><span class="spacer"></span>${mk === E.monthKey(S.today) ? "" : `<button class="btn ghost sm" data-act="cal-now">This month</button>`}</div>`;
+  const legend = weekGoals ? `<p class="legend"><span><i class="sw hit"></i>Weekly goal hit</span><span><i class="sw miss"></i>Missed</span></p>` : "";
+  return `${nav}${periodCard(mt, mg, mstat, "month", finished ? `, ${plural(finished, "book")} finished` : "", 'data-act="settings"')}<section class="calcard"><div class="cal">${grid}</div>${legend}</section>`;
+}
+function dayCell(d, t, ms, me, since) {
+  const future = d > S.today, before = !since || d < since, read = !!(t && (t.secs > 0 || t.pages > 0));
+  const val = read ? (t.secs > 0 ? E.fmtShort(t.secs) : `${t.pages}p`) : future || before ? "" : "0";
+  const cls = ["day", d < ms || d > me ? "out" : "", future ? "future" : "", read ? "read" : "", d === S.today ? "today" : ""].filter(Boolean).join(" ");
+  const label = `${E.fmtDay(d)}: ${read ? `${E.fmtMins(t.secs)}, ${plural(t.pages, "page")}` : future ? "coming up" : before ? "before you started" : "no reading"}`;
+  return `<button class="${cls}" data-act="day" data-date="${d}"${future ? " disabled" : ""} aria-label="${esc(label)}"><span class="dn">${Number(d.slice(8))}</span><span class="dv">${val}</span></button>`;
+}
+// A week or month: time against the goal, green once it's hit and red if it ends short
+function periodCard(t, g, stt, kind, extra, goalAttr) {
+  const left = g ? g.min * 60 - t.secs : 0;
+  const status = stt === "hit" ? `<span class="pill hit">${ICON.check}Goal hit</span>` : stt === "miss" ? `<span class="pill miss">${ICON.x}Missed by ${E.fmtMins(left)}</span>` : stt === "open" ? `<span class="pill">${E.fmtMins(left)} to go</span>` : `<button class="link" ${goalAttr}>Set a ${kind}ly goal</button>`;
+  return `<div class="pcard ${stt}"><div class="pc-top"><p class="pc-time"><strong>${E.fmtMins(t.secs)}</strong>${g ? `<span>of ${E.fmtMins(g.min * 60)}${g.from ? `, from ${E.fmtMD(g.from)}` : ""}</span>` : ""}</p>${status}</div>${g ? hlBar((t.secs / (g.min * 60)) * 100) : ""}<p class="pc-foot">${plural(t.pages, "page")} read${extra || ""}</p></div>`;
+}
+function openDay(date) {
+  const sh = openSheet({ title: E.fmtDay(date) });
+  const draw = () => {
+    const ss = S.st.sessions.filter((s) => s.date === date).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    const t = E.periodTotals(ss, date, date), since = E.sinceDay(S.st);
+    sh.body.innerHTML = ss.length ? `<p class="day-tot"><strong>${E.fmtMins(t.secs)}</strong> read, ${plural(t.pages, "page")}</p><ul class="srows">${ss.map((s) => sessRow(s, true)).join("")}</ul>`
+      : `<p class="muted">${!since || date < since ? "This is before you started tracking." : "No reading this day, so it counts as 0."}</p>`;
+    sh.setFoot(S.st.books.length ? `<button class="btn plum block" data-x="add">${ICON.plus}Add reading</button>` : "");
+  };
+  sh.refresh = draw; draw();
+  sh.wrap.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-x]");
+    if (!el) return;
+    if (el.dataset.x === "add") readingForm({ mode: "add", date });
+    else if (el.dataset.x === "sess") editSession(el.dataset.id);
+  });
+}
+function openWeek(ws) {
+  const we = E.addDays(ws, 6);
+  const sh = openSheet({ title: `Week of ${E.fmtRange(ws, we)}` });
+  const draw = () => {
+    const st = S.st, t = E.periodTotals(st.sessions, ws, we), g = E.periodGoal(st, "week", ws, we), stt = E.goalStatus(t.secs, g, we, S.today), days = E.dayTotals(st.sessions), since = E.sinceDay(st);
+    const rows = E.eachDay(ws, we).map((d) => {
+      const x = days.get(d), future = d > S.today, val = x ? E.fmtMins(x.secs) : future || !since || d < since ? "–" : "0m";
+      return `<li><button class="srow" data-x="day" data-date="${d}"${future ? " disabled" : ""}><span class="sr-main"><strong>${esc(dayWord(d))}</strong>${x && x.pages ? `<span>${plural(x.pages, "page")}</span>` : ""}</span><span class="sr-side">${val}</span></button></li>`;
+    }).join("");
+    sh.body.innerHTML = periodCard(t, g, stt, "week", "", 'data-x="goal"') + `<ul class="srows">${rows}</ul>`;
+  };
+  sh.refresh = draw; draw();
+  sh.wrap.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-x]");
+    if (!el) return;
+    if (el.dataset.x === "day") openDay(el.dataset.date);
+    else if (el.dataset.x === "goal") openSettings();
+  });
+}
+function sessRow(s, withTitle) {
+  const sub = `p. ${s.start}–${s.end}, ${plural(E.pagesOf(s), "page")}`;
+  return `<li><button class="srow" data-x="sess" data-id="${esc(s.id)}"><span class="sr-main"><strong class="${withTitle ? "serif" : ""}">${esc(withTitle ? titleOf(s) : dayWord(s.date))}</strong><span>${esc(sub)}</span></span><span class="sr-side">${E.fmtMins(s.secs)}</span></button></li>`;
+}
+
+// ---------- Logging reading ----------
+function bookOptions(sel, gone) {
+  const opt = (b) => `<option value="${esc(b.id)}"${b.id === sel ? " selected" : ""}>${esc(b.title)}</option>`;
+  const unread = E.queue(S.st), read = S.st.books.filter(E.isRead);
+  let h = unread.length ? `<optgroup label="To read">${unread.map(opt).join("")}</optgroup>` : "";
+  if (read.length) h += `<optgroup label="Read">${read.map(opt).join("")}</optgroup>`;
+  if (gone) h += `<option value="${esc(gone.bookId)}" selected>${esc(gone.title || "A deleted book")} (deleted)</option>`;
+  return h;
+}
+// One form for finishing the timer, adding reading by hand and fixing a saved reading
+function readingForm(o) {
+  const st = S.st, s0 = o.session || null, t = o.mode === "finish" ? st.timer : null;
+  if (o.mode === "finish" && !t) return;
+  if (!s0 && !t && !st.books.length) { toast("Add a book first."); return; }
+  let bookId = s0 ? s0.bookId : t ? t.bookId : o.bookId && bookById(o.bookId) ? o.bookId : (E.currentBook(st) || st.books[0]).id;
+  const gone = s0 && !bookById(s0.bookId) ? s0 : null;
+  const elapsed = t ? Math.round(E.timerElapsed(t, Date.now()) / 1000) : 0;
+  const minsInit = s0 ? String(Math.round(s0.secs / 60)) : t ? String(Math.round(elapsed / 60)) : "";
+  const startInit = s0 ? s0.start : t ? (t.startPage !== null ? t.startPage : startFor(bookId)) : startFor(bookId);
+  const sh = openSheet({ title: t ? "Save your reading" : s0 ? "Edit reading" : "Add reading", focus: true });
+  const b0 = bookById(bookId);
+  const long = t && elapsed > 4 * 3600 ? "That's over 4 hours. If the timer ran on, fix the minutes." : "";
+  const when = t ? (t.date === S.today ? clockTime(t.startedAt) : `${t.date === E.addDays(S.today, -1) ? "yesterday" : E.fmtDay(t.date)}, ${clockTime(t.startedAt)}`) : "";
+  sh.body.innerHTML = (t ? `<p class="rf-book"><strong>${esc(b0.title)}</strong><span>Started ${esc(when)}${t.startPage !== null ? `, from page ${t.startPage}` : ""}</span></p>`
+      : field("Book", `<select id="rf-book">${bookOptions(bookId, gone)}</select>`) + field("Day", `<input type="date" id="rf-date" max="${S.today}" value="${esc(s0 ? s0.date : o.date || S.today)}">`)) +
+    `<div class="grid2">${field("From page", `<input id="rf-start" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(startInit)}">`)}${field("To page", `<input id="rf-end" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(s0 ? s0.end : "")}">`)}</div>` +
+    field("Minutes", `<input id="rf-min" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${esc(minsInit)}">`, long) +
+    `<label class="check" id="rf-done-row"><input type="checkbox" id="rf-done"><span>I finished the book</span></label><p class="form-err" id="rf-err" role="alert" hidden></p>`;
+  sh.setFoot(t ? `<button class="btn ghost" data-x="discard">Discard</button><button class="btn plum" data-x="save">Save</button>`
+    : s0 ? `<button class="btn ghost danger-t" data-x="delete">${ICON.trash}Delete</button><button class="btn plum" data-x="save">Save</button>` : `<button class="btn plum block" data-x="save">Save</button>`);
+  const B = sh.body, endIn = $("#rf-end", B), startIn = $("#rf-start", B), doneBox = $("#rf-done", B), doneRow = $("#rf-done-row", B);
+  let startTouched = false, doneTouched = false;
+  const showDone = () => { const b = bookById(bookId); doneRow.hidden = !!s0 || !b || E.isRead(b); };
+  showDone();
+  startIn.oninput = () => { startTouched = true; };
+  doneBox.onchange = () => { doneTouched = true; };
+  endIn.oninput = () => {
+    const b = bookById(bookId), n = intIn(endIn.value);
+    if (!doneTouched) doneBox.checked = !!(b && b.pages && Number.isInteger(n) && n >= b.pages);
+  };
+  const sel = $("#rf-book", B);
+  if (sel) sel.onchange = () => { bookId = sel.value; if (!startTouched) startIn.value = startFor(bookId); endIn.oninput(); showDone(); };
+  setTimeout(() => endIn.focus(), 60);
+  const err = (m) => { const e = $("#rf-err", B); e.textContent = m; e.hidden = false; };
+  const go = () => {
+    const b = bookById(bookId);
+    if (!b && !gone) return err("Pick a book.");
+    const date = t ? t.date : $("#rf-date", B).value;
+    if (!E.isDate(date) || date > S.today) return err("Pick a day up to today.");
+    const start = intIn(startIn.value), end = intIn(endIn.value), mins = intIn($("#rf-min", B).value);
+    if (start === null || Number.isNaN(start)) return err("Type the page you started on.");
+    if (end === null || Number.isNaN(end)) return err("Type the page you stopped on.");
+    if (end < start) return err(`You stopped before page ${start}. Check the pages.`);
+    if (mins === null || Number.isNaN(mins)) return err("Type how many minutes you read.");
+    if (mins > 24 * 60) return err("That's more than a day. Check the minutes.");
+    const prev = clone(S.st);
+    const secs = t && $("#rf-min", B).value.trim() === minsInit ? elapsed : mins * 60;
+    const sess = { id: s0 ? s0.id : uid("s"), bookId: b ? b.id : gone.bookId, title: b ? b.title : gone.title, date, start, end, secs, at: s0 ? s0.at : nowISO() };
+    S.st.sessions = S.st.sessions.filter((x) => x.id !== sess.id).concat([sess]);
+    if (t) S.st.timer = null;
+    let msg = s0 ? "Reading saved" : `Saved ${E.fmtMins(secs)} and ${plural(end - start, "page")}`;
+    if (b && !doneRow.hidden && doneBox.checked) {
+      b.done = true; b.doneOn = date;
+      if (S.st.pick === b.id) S.st.pick = null;
+      const stt = E.bookStats(S.st, b.id);
+      msg = `Finished ${b.title}${stt.secs ? `: ${E.fmtMins(stt.secs)}${stt.tookDays ? ` over ${plural(stt.tookDays, "day")}` : ""}` : ""}.`;
+      if (E.areaDone(S.st, b.areaId)) msg += ` That's every book in ${areaById(b.areaId).name}.`;
+    }
+    sh.close(true);
+    commit(msg, prev);
+  };
+  sh.foot.onclick = async (e) => {
+    const el = e.target.closest("[data-x]");
+    if (!el) return;
+    if (el.dataset.x === "save") go();
+    else if (el.dataset.x === "discard") {
+      if (!(await confirmBox({ title: "Discard this reading?", body: `The ${E.fmtMins(elapsed)} on the timer won't be saved.`, ok: "Discard", danger: true }))) return;
+      const prev = clone(S.st);
+      S.st.timer = null; sh.close(true); commit("Reading discarded", prev);
+    } else if (el.dataset.x === "delete") {
+      const prev = clone(S.st);
+      S.st.sessions = S.st.sessions.filter((x) => x.id !== s0.id); sh.close(true); commit("Reading deleted", prev);
+    }
+  };
+  B.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); go(); } });
+}
+function editSession(id) { const s = S.st.sessions.find((x) => x.id === id); if (s) readingForm({ mode: "edit", session: s }); }
+
+// ---------- One book ----------
+function openBook(id) {
+  const sh = openSheet({ title: "Book" });
+  const draw = () => {
+    const b = bookById(id);
+    if (!b) { sh.close(true); return; }
+    const st = S.st, stt = E.bookStats(st, b.id), a = areaById(b.areaId), inArea = E.booksIn(st, a.id), pos = inArea.findIndex((x) => x.id === b.id);
+    const read = E.isRead(b), cur = E.currentBook(st), isCur = !!(cur && cur.id === b.id), first = areaNum(a.id) === 1 && pos === 0, last = areaNum(a.id) === st.areas.length && pos === inArea.length - 1;
+    sh.setTitle(a.name);
+    const cells = [];
+    if (stt.secs || stt.pages) { cells.push(["Time read", E.fmtMins(stt.secs)]); cells.push(["Pages read", String(stt.pages)]); }
+    if (stt.perHour) cells.push(["Pace", `${Math.round(stt.perHour)} pages an hour`, `${one(stt.minPerPage)} min a page`]);
+    if (stt.leftSecs !== null) cells.push(["Time left", `About ${E.fmtMins(stt.leftSecs)}`, plural(Math.max(0, b.pages - stt.bookmark), "page") + " to go"]);
+    if (stt.first) cells.push(["Started", withYear(stt.first)]);
+    if (b.done && b.doneOn) cells.push(["Finished", withYear(b.doneOn), stt.tookDays ? `Took ${plural(stt.tookDays, "day")}` : ""]);
+    const ss = E.sessionsOf(st, b.id).slice().reverse();
+    let act = "";
+    if (!read && isCur && !st.timer) act = `<button class="btn plum" data-x="start">${ICON.play}Start reading</button>`;
+    else if (!read && !isCur) act = `<button class="btn plum" data-x="now">${ICON.read}Read this now</button>`;
+    act += read ? `<button class="btn ghost" data-x="unread">Mark as not read</button>` : `<button class="btn ghost" data-x="read">${ICON.check}Mark as read</button>`;
+    sh.body.innerHTML = `<div class="bk-head"><p class="bk-title">${esc(b.title)}</p>${b.author ? `<p class="bk-author">${esc(b.author)}</p>` : ""}<p class="bk-meta">Book ${pos + 1} of ${inArea.length} in ${esc(a.name)}${b.pages ? `, ${b.pages} pages` : ""}${read ? "" : isCur ? ", reading now" : ""}</p></div>
+      ${b.pages && !read && stt.bookmark !== null ? `<div class="bk-prog">${hlBar(pctOf(b, stt.bookmark))}<p class="bk-meta">On page ${stt.bookmark} of ${b.pages}, ${pctOf(b, stt.bookmark)}%</p></div>` : ""}
+      ${b.before ? `<p class="note">You read this before you started tracking, so it has no time.</p>` : ""}
+      ${cells.length ? `<dl class="stats">${cells.map(([k, v, sub]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}${sub ? `<small>${esc(sub)}</small>` : ""}</dd></div>`).join("")}</dl>` : ""}
+      <div class="row-btns">${act}</div>
+      ${b.before && !ss.length ? "" : `<h3 class="h3">Reading log</h3>${ss.length ? `<ul class="srows">${ss.map((s) => sessRow(s, false)).join("")}</ul>` : `<p class="muted small">Nothing logged yet.</p>`}<button class="btn ghost block" data-x="add">${ICON.plus}Add reading</button>`}
+      <div class="row-btns sm"><button class="btn ghost sm" data-x="up"${first ? " disabled" : ""}>${ICON.up}Move up</button><button class="btn ghost sm" data-x="down"${last ? " disabled" : ""}>${ICON.down}Move down</button><button class="btn ghost sm" data-x="edit">${ICON.pencil}Edit</button></div>`;
+  };
+  sh.refresh = draw; draw();
+  sh.body.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-x]"), b = bookById(id);
+    if (!el || !b) return;
+    const x = el.dataset.x;
+    if (x === "sess") editSession(el.dataset.id);
+    else if (x === "add") readingForm({ mode: "add", bookId: b.id });
+    else if (x === "edit") editBook(b.id);
+    else if (x === "up" || x === "down") moveBook(b.id, x === "up" ? -1 : 1);
+    else if (x === "read" || x === "unread") toggleRead(b.id);
+    else if (x === "now") {
+      const t = S.st.timer;
+      if (t && t.bookId !== b.id) { toast(`You're timing ${(bookById(t.bookId) || {}).title || "another book"}. Finish that first.`); return; }
+      S.st.pick = b.id; closeAllSheets(); setTab("read", true); commit(`Reading ${b.title} now`);
+    } else if (x === "start") { closeAllSheets(); setTab("read", true); ACT.start(); }
+  });
+}
+
+// ---------- Adding and changing books and areas ----------
+function editBook(id, areaId) {
+  const b = id ? bookById(id) : null;
+  if (!S.st.areas.length) { editArea(null); return; }
+  const sh = openSheet({ title: b ? "Edit book" : "Add a book", focus: true });
+  const area0 = b ? b.areaId : areaId && areaById(areaId) ? areaId : S.st.areas[0].id;
+  sh.body.innerHTML = field("Title", `<input id="bk-title" maxlength="120" autocomplete="off" autocapitalize="words" value="${esc(b ? b.title : "")}">`) +
+    field("Author", `<input id="bk-author" maxlength="80" autocomplete="off" autocapitalize="words" value="${esc(b ? b.author : "")}" placeholder="Optional">`) +
+    `<div class="grid2">${field("Total pages", `<input id="bk-pages" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${b && b.pages ? b.pages : ""}" placeholder="Optional">`)}${field("Area", `<select id="bk-area">${S.st.areas.map((a) => `<option value="${esc(a.id)}"${a.id === area0 ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`)}</div>` +
+    `<div class="check-wrap"><label class="check"><input type="checkbox" id="bk-before"${b && b.before ? " checked" : ""}><span>I read this before I started tracking</span></label><p class="field-h">It's checked off with no time recorded.</p></div>` +
+    `<p class="form-err" id="bk-err" role="alert" hidden></p>`;
+  sh.setFoot(b ? `<button class="btn ghost danger-t" data-x="delete">${ICON.trash}Delete</button><button class="btn plum" data-x="save">Save</button>` : `<button class="btn plum block" data-x="save">Add book</button>`);
+  const B = sh.body;
+  setTimeout(() => $("#bk-title", B).focus(), 60);
+  const err = (m) => { const e = $("#bk-err", B); e.textContent = m; e.hidden = false; };
+  const go = () => {
+    const title = $("#bk-title", B).value.trim(), author = $("#bk-author", B).value.trim(), pages = intIn($("#bk-pages", B).value), area = $("#bk-area", B).value, before = $("#bk-before", B).checked;
+    if (!title) return err("Give the book a title.");
+    if (Number.isNaN(pages) || pages === 0 || pages > 20000) return err("Type the number of pages, like 320, or leave it empty.");
+    const prev = clone(S.st);
+    if (!b) {
+      S.st.books.push({ id: uid("b"), areaId: area, title, author, pages: pages || null, done: false, doneOn: null, before, addedOn: S.today });
+      sh.close(true);
+      commit(`Added ${title} to ${areaById(area).name}`, prev);
+      return;
+    }
+    const was = bookById(b.id);
+    Object.assign(was, { title, author, pages: pages || null, before });
+    if (was.areaId !== area) { S.st.books = S.st.books.filter((x) => x.id !== was.id); was.areaId = area; S.st.books.push(was); }
+    sh.close(true);
+    commit("Book saved");
+  };
+  B.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.type !== "checkbox") { e.preventDefault(); go(); } });
+  sh.foot.onclick = async (e) => {
+    const el = e.target.closest("[data-x]");
+    if (!el) return;
+    if (el.dataset.x === "save") { go(); return; }
+    const n = E.sessionsOf(S.st, b.id).length;
+    if (n && !(await confirmBox({ title: `Delete ${b.title}?`, body: `Its ${plural(n, "reading")} still count in your weekly and monthly totals.`, ok: "Delete book", danger: true }))) return;
+    const prev = clone(S.st);
+    S.st.books = S.st.books.filter((x) => x.id !== b.id);
+    if (S.st.timer && S.st.timer.bookId === b.id) S.st.timer = null;
+    if (S.st.pick === b.id) S.st.pick = null;
+    closeAllSheets();
+    commit(`Deleted ${b.title}`, prev);
+  };
+}
+function editArea(id) {
+  const a = id ? areaById(id) : null;
+  const sh = openSheet({ title: a ? "Edit area" : "Add an area", focus: true });
+  const n = a ? E.booksIn(S.st, a.id).length : 0;
+  sh.body.innerHTML = field("Name", `<input id="ar-name" maxlength="60" autocomplete="off" autocapitalize="words" value="${esc(a ? a.name : "")}" placeholder="Leadership, Health, Money…">`) +
+    `<p class="muted small">${a ? `Number ${areaNum(a.id)} of ${S.st.areas.length}, with ${plural(n, "book")}.` : "It goes at the bottom. Drag it up on the Books tab to read it sooner."}</p><p class="form-err" id="ar-err" role="alert" hidden></p>`;
+  sh.setFoot(a ? `<button class="btn ghost danger-t" data-x="delete">${ICON.trash}Delete</button><button class="btn plum" data-x="save">Save</button>` : `<button class="btn plum block" data-x="save">Add area</button>`);
+  const B = sh.body, inp = $("#ar-name", B);
+  setTimeout(() => inp.focus(), 60);
+  const go = () => {
+    const name = inp.value.trim();
+    if (!name) { const e = $("#ar-err", B); e.textContent = "Give the area a name."; e.hidden = false; return; }
+    if (a) { areaById(a.id).name = name; sh.close(true); commit("Area saved"); return; }
+    const na = { id: uid("a"), name };
+    S.st.areas.push(na);
+    sh.close(true);
+    commit(`Added ${name}`, null, { label: "Add a book", run: () => editBook(null, na.id) });
+  };
+  inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } };
+  sh.foot.onclick = async (e) => {
+    const el = e.target.closest("[data-x]");
+    if (!el) return;
+    if (el.dataset.x === "save") { go(); return; }
+    if (n && !(await confirmBox({ title: `Delete ${a.name}?`, body: `Its ${plural(n, "book")} go too. Time you've read still counts in your totals.`, ok: "Delete area", danger: true }))) return;
+    const prev = clone(S.st), gone = new Set(E.booksIn(S.st, a.id).map((b) => b.id));
+    S.st.books = S.st.books.filter((b) => !gone.has(b.id));
+    S.st.areas = S.st.areas.filter((x) => x.id !== a.id);
+    if (S.st.timer && gone.has(S.st.timer.bookId)) S.st.timer = null;
+    if (gone.has(S.st.pick)) S.st.pick = null;
+    closeAllSheets();
+    commit(`Deleted ${a.name}`, prev);
+  };
+}
+
+// ---------- Settings ----------
+function lastLine() { const m = meta(); return `${m.lastBackup ? `Last backup ${stamp(m.lastBackup)}.` : "No backup yet."} ${plural(S.st.books.length, "book")} and ${plural(S.st.sessions.length, "reading")} saved.`; }
+async function openSettings() {
+  const sh = openSheet({ title: "Settings" });
+  const persisted = await DB.persisted();
+  const g = E.goalAt(S.st.goalLog, S.today);
+  const storage = DB.mode() === "memory" ? "This browser isn't saving anything (Private Browsing?). Open the app normally to keep your books."
+    : persisted ? "Saved on this phone." : "Saved on this phone. Download a backup now and then, in case the browser clears its storage.";
+  sh.body.innerHTML = `<h3 class="h3 first">Reading goals</h3>
+    <div class="grid2">${field("Each week", `<span class="unit-in"><input id="st-week" inputmode="decimal" autocomplete="off" value="${hoursOut(g.weekMin)}" placeholder="None"><span>hours</span></span>`)}${field("Each month", `<span class="unit-in"><input id="st-month" inputmode="decimal" autocomplete="off" value="${hoursOut(g.monthMin)}" placeholder="None"><span>hours</span></span>`)}</div>
+    <p class="muted small">Time only. Weeks run Monday to Sunday. Leave a box empty for no goal. A change counts from this week and month on.</p>
+    <p class="form-err" id="st-err" role="alert" hidden></p>
+    <h3 class="h3">Your data</h3>
+    <p class="small">${esc(storage)}</p>
+    <button class="btn ghost block" id="st-backup">${ICON.download}Download a backup</button>
+    <label class="btn ghost block file">${ICON.upload}Restore from a backup<input type="file" id="st-restore" accept="application/json,.json"></label>
+    <div id="st-box" aria-live="polite"></div>
+    <p class="muted small" id="st-last">${esc(lastLine())}</p>`;
+  const B = sh.body;
+  const setGoals = () => {
+    const w = hoursIn($("#st-week", B).value), m = hoursIn($("#st-month", B).value), e = $("#st-err", B);
+    if (Number.isNaN(w) || Number.isNaN(m)) { e.textContent = "Type hours as a number, like 4 or 3.5."; e.hidden = false; return; }
+    e.hidden = true;
+    const now = E.goalAt(S.st.goalLog, S.today);
+    if ((now.weekMin || null) === (w || null) && (now.monthMin || null) === (m || null)) return;
+    S.st.goalLog = E.setGoal(S.st.goalLog, S.today, w, m);
+    commit();
+  };
+  $("#st-week", B).onchange = setGoals;
+  $("#st-month", B).onchange = setGoals;
+  $("#st-backup", B).onclick = async () => {
+    const data = { app: "book-tracker", version: 1, exported_at: nowISO(), state: S.st };
+    const r = await DB.saveFile(`book-tracker-backup-${S.today}.json`, JSON.stringify(data, null, 1), "application/json");
+    if (r === "cancelled") return;
+    setMeta({ lastBackup: nowISO() });
+    $("#st-last", B).textContent = lastLine();
+    toast("Backup saved");
+  };
+  const box = $("#st-box", B);
+  $("#st-restore", B).onchange = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    let d = null;
+    try { d = JSON.parse(await f.text()); } catch (err) { d = null; }
+    if (!d || d.app !== "book-tracker" || !d.state || typeof d.state !== "object") { box.innerHTML = `<p class="form-err">That file isn't a Book Tracker backup.</p>`; return; }
+    const ns = E.normState(d.state, S.today), dates = ns.sessions.map((x) => x.date).sort();
+    box.innerHTML = `<div class="restore"><p>This backup has ${plural(ns.areas.length, "area")}, ${plural(ns.books.length, "book")} and ${plural(ns.sessions.length, "reading")}${dates.length ? ` from ${esc(withYear(dates[0]))} to ${esc(withYear(dates[dates.length - 1]))}` : ""}. Restoring replaces everything on this phone with it.</p><div class="row-btns"><button class="btn ghost sm" data-x="no">Cancel</button><button class="btn plum sm" data-x="yes">Restore</button></div></div>`;
+    $("[data-x=no]", box).onclick = () => { box.innerHTML = ""; };
+    $("[data-x=yes]", box).onclick = async () => {
+      const t = S.st.timer;
+      ns.timer = t && ns.books.some((b) => b.id === t.bookId) ? t : null;
+      S.st = ns;
+      try { await DB.save(S.st); } catch (err) { saveErr(err); return; }
+      sh.close(true); render();
+      toast("Restored your backup");
+    };
+  };
+}
+
+// ---------- Sheets ----------
+const sheets = [];
+function openSheet(o) {
+  const wrap = document.createElement("div");
+  wrap.className = "sheet-wrap";
+  wrap.innerHTML = `<div class="sheet-backdrop" data-close></div><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(o.title)}"><header class="sheet-head"><h2>${esc(o.title)}</h2><button class="icon-btn" data-close aria-label="Close">${ICON.x}</button></header><div class="sheet-body"></div><footer class="sheet-foot" hidden></footer></section>`;
+  document.body.appendChild(wrap);
+  document.documentElement.classList.add("sheet-open");
+  const prevFocus = document.activeElement;
+  const api = {
+    wrap, body: $(".sheet-body", wrap), foot: $(".sheet-foot", wrap), refresh: null,
+    close(skipHook) {
+      if (!document.contains(wrap)) return;
+      wrap.remove();
+      const i = sheets.indexOf(api); if (i >= 0) sheets.splice(i, 1);
+      if (!sheets.length) { document.documentElement.classList.remove("sheet-open"); if (S.dirty) { S.dirty = false; render(); } }
+      if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true });
+      if (!skipHook && o.onClose) o.onClose();
+    },
+    setTitle(t) { $(".sheet-head h2", wrap).textContent = t; $(".sheet", wrap).setAttribute("aria-label", t); },
+    setFoot(html) { api.foot.hidden = !html; api.foot.innerHTML = html || ""; }
+  };
+  $$("[data-close]", wrap).forEach((b) => { b.onclick = () => api.close(); });
+  sheets.push(api);
+  setTimeout(() => { if (!o.focus) { const f = $(".sheet-head .icon-btn", wrap); if (f) f.focus({ preventScroll: true }); } }, 0);
+  return api;
+}
+function refreshSheets() { for (const s of sheets.slice()) if (s.refresh) s.refresh(); }
+function closeAllSheets() { while (sheets.length) sheets[sheets.length - 1].close(true); }
+function confirmBox(o) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const sh = openSheet({ title: o.title, onClose: () => { if (!answered) resolve(false); } });
+    sh.body.innerHTML = `<p class="lead">${esc(o.body)}</p>`;
+    sh.setFoot(`<button class="btn ghost" data-x="no">Cancel</button><button class="btn ${o.danger ? "danger" : "plum"}" data-x="yes">${esc(o.ok)}</button>`);
+    $("[data-x=no]", sh.foot).onclick = () => sh.close();
+    $("[data-x=yes]", sh.foot).onclick = () => { answered = true; sh.close(true); resolve(true); };
+  });
+}
+function choiceSheet(title, options, cb) {
+  const sh = openSheet({ title });
+  sh.body.innerHTML = `<div class="choices">${options.map(([k, label, sub]) => `<button class="choice" data-k="${esc(k)}"><span class="choice-main"><strong>${esc(label)}</strong>${sub ? `<span>${esc(sub)}</span>` : ""}</span>${ICON.right}</button>`).join("")}</div>`;
+  $$("[data-k]", sh.body).forEach((b) => { b.onclick = () => { sh.close(true); cb(b.dataset.k); }; });
+  return sh;
+}
+function field(label, inner, hint) { return `<label class="field"><span class="field-l">${esc(label)}</span>${inner}${hint ? `<span class="field-h">${esc(hint)}</span>` : ""}</label>`; }
+
+// ---------- Toast ----------
+let toastTimer = null;
+function toast(msg, action) {
+  const t = $("#toast");
+  t.innerHTML = `<span>${esc(msg)}</span>${action ? `<button>${esc(action.label)}</button>` : ""}`;
+  t.hidden = false;
+  if (action) $("button", t).onclick = () => { t.hidden = true; action.run(); };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, action ? 8000 : 3500);
+}
+
+// ---------- Start ----------
+async function boot() {
+  render();
+  await DB.init();
+  let raw = null;
+  try { raw = await DB.load(); } catch (e) { raw = null; }
+  S.st = E.normState(raw, S.today);
+  if (!raw) await DB.save(S.st).catch(() => {});
+  S.booted = true;
+  render();
+  DB.onChange(async () => {
+    let r = null;
+    try { r = await DB.load(); } catch (e) { return; }
+    if (!r) return;
+    S.st = E.normState(r, S.today);
+    if (sheets.length || drag) S.dirty = true; else render();
+  });
+  if (DB.mode() === "memory") setTimeout(() => toast("This browser won't keep your books (Private Browsing?). Open the app normally to save them."), 800);
+}
+window.addEventListener("pageshow", (e) => { if (e.persisted && S.booted) render(); });
+boot();
+
+})();
+
+</script>
+<script>
+if ("serviceWorker" in navigator) window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+</script>
+</body>
+</html>
